@@ -112,9 +112,9 @@ export default {
   name: 'AgoraLiveStream',
   data() {
     return {
-      appId: '', // Get from agora.io console
-      token: '', // Optional: for production
-      channelName: 'test-channel',
+      appId: '90f0e5a8c82643fcb78693895d820267', // Get from agora.io console
+      token: '007eJxTYPDID18csCDln4yu0Z39XbXdple/PHynforF4EjwrSm2GskKDJYGaQappokWyRZGZibGaclJ5hZmlsYWlqYpFkYGRmbmRoodWQ2BjAx3xMOZGRkgEMQXZSjKT8kvzdHNySxL1U3OSSwu1k1JLWNgAAB78CS2', // Optional: for production
+      channelName: 'rodoul-live-class-dev',
       userName: 'User_' + Math.floor(Math.random() * 1000),
       uid: Math.floor(Math.random() * 10000),
       
