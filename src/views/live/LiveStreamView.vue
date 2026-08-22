@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'; // 1. Added nextTick
 import { useRoute } from 'vue-router';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 
@@ -36,7 +36,8 @@ const joinChannel = async () => {
         if (!remoteUsers.value.find(u => u.uid === user.uid)) {
           remoteUsers.value.push({ uid: user.uid, name: `Student ${user.uid}`, videoTrack: user.videoTrack });
         }
-        setTimeout(() => user.videoTrack.play(`remote-player-${user.uid}`), 100);
+        await nextTick();
+        user.videoTrack.play(`remote-player-${user.uid}`);
       }
       if (mediaType === 'audio') user.audioTrack.play();
     });
@@ -50,10 +51,16 @@ const joinChannel = async () => {
     localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
     localVideoTrack = await AgoraRTC.createCameraVideoTrack();
 
-    await localVideoTrack.play(`local-player-${uid}`);
+    // Publish tracks first
     await agoraEngine.publish([localAudioTrack, localVideoTrack]);
 
+    // Set connected state so Vue renders the DOM element
     isConnected.value = true;
+
+    // Wait for Vue DOM update before mounting the video player
+    await nextTick();
+    localVideoTrack.play(`local-player-${uid}`);
+
   } catch (err) {
     error.value = `Failed to connect: ${err.message}`;
   }
