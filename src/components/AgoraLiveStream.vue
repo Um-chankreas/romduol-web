@@ -7,7 +7,7 @@
         {{ isConnected ? 'Connected' : 'Disconnected' }}
       </div>
     </div>
- 
+
     <!-- Settings Panel -->
     <div class="settings-panel" v-if="!isConnected">
       <div class="input-group">
@@ -19,12 +19,12 @@
         <label>Your Name:</label>
         <input v-model="userName" type="text" placeholder="Enter your name" />
       </div>
- 
+
       <div class="input-group">
         <label>App ID:</label>
         <input v-model="appId" type="text" placeholder="Enter your Agora App ID" />
       </div>
- 
+
       <div class="input-group">
         <label>Token (Optional - for production):</label>
         <input v-model="token" type="password" placeholder="Paste token here if you have one" />
@@ -32,11 +32,11 @@
           💡 Leave empty for development with temporary token enabled
         </small>
       </div>
- 
+
       <button class="btn-join" @click="joinChannel">
         Join Channel
       </button>
- 
+
       <div class="help-text">
         <small>
           <strong>First time?</strong> See 
@@ -46,7 +46,7 @@
         </small>
       </div>
     </div>
- 
+
     <!-- Video Grid -->
     <div class="video-grid" v-if="isConnected">
       <!-- Local Video -->
@@ -54,7 +54,7 @@
         <div :id="`local-player-${uid}`" class="video-player"></div>
         <div class="user-label">You (Local)</div>
       </div>
- 
+
       <!-- Remote Videos -->
       <div 
         v-for="user in remoteUsers" 
@@ -65,7 +65,7 @@
         <div class="user-label">{{ user.name || `User ${user.uid}` }}</div>
       </div>
     </div>
- 
+
     <!-- Controls -->
     <div class="controls" v-if="isConnected">
       <button 
@@ -75,7 +75,7 @@
       >
         🎤 {{ audioEnabled ? 'Mute' : 'Unmute' }}
       </button>
- 
+
       <button 
         class="btn-control" 
         :class="{ active: videoEnabled }"
@@ -83,12 +83,12 @@
       >
         📹 {{ videoEnabled ? 'Stop Video' : 'Start Video' }}
       </button>
- 
+
       <button class="btn-leave" @click="leaveChannel">
         Leave Channel
       </button>
     </div>
- 
+
     <!-- User List -->
     <div class="user-list" v-if="isConnected">
       <h3>Participants ({{ remoteUsers.length + 1 }})</h3>
@@ -97,24 +97,24 @@
         👤 {{ user.name || `User ${user.uid}` }}
       </div>
     </div>
- 
+
     <!-- Error Message -->
     <div class="error-message" v-if="error">
       ❌ {{ error }}
     </div>
   </div>
 </template>
- 
+
 <script>
 import AgoraRTC from 'agora-rtc-sdk-ng'
- 
+
 export default {
   name: 'AgoraLiveStream',
   data() {
     return {
-      appId: '90f0e5a8c82643fcb78693895d820267', // Get from agora.io console
-      token: '007eJxTYPDID18csCDln4yu0Z39XbXdple/PHynforF4EjwrSm2GskKDJYGaQappokWyRZGZibGaclJ5hZmlsYWlqYpFkYGRmbmRoodWQ2BjAx3xMOZGRkgEMQXZSjKT8kvzdHNySxL1U3OSSwu1k1JLWNgAAB78CS2', // Optional: for production
-      channelName: 'rodoul-live-class-dev',
+      appId: '', // Get from agora.io console
+      token: '', // Optional: for production
+      channelName: 'test-channel',
       userName: 'User_' + Math.floor(Math.random() * 1000),
       uid: Math.floor(Math.random() * 10000),
       
@@ -133,7 +133,7 @@ export default {
       remoteUsers: []
     }
   },
- 
+
   methods: {
     async joinChannel() {
       try {
@@ -143,50 +143,55 @@ export default {
           this.error = 'Please enter your Agora App ID'
           return
         }
- 
+
         if (!this.channelName) {
           this.error = 'Please enter a channel name'
           return
         }
- 
+
         // Initialize Agora engine
         this.agoraEngine = AgoraRTC.createClient({
           mode: 'rtc',
           codec: 'vp9'
         })
- 
+
         // Handle user published event
         this.agoraEngine.on('user-published', this.handleUserPublished)
         this.agoraEngine.on('user-unpublished', this.handleUserUnpublished)
         this.agoraEngine.on('user-left', this.handleUserLeft)
- 
+
         // Join channel (using temp token - for development only)
         // In production, get token from your backend
         await this.agoraEngine.join(this.appId, this.channelName, this.token || null, this.uid)
- 
+
         // Create and publish local tracks
         this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack()
         this.localVideoTrack = await AgoraRTC.createCameraVideoTrack()
- 
-        // Play local video
-        await this.localVideoTrack.play(`local-player-${this.uid}`)
- 
-        // Publish tracks
+
+        // Publish tracks FIRST
         await this.agoraEngine.publish([this.localAudioTrack, this.localVideoTrack])
- 
+
+        // Set connected so Vue renders the DOM
         this.isConnected = true
+
+        // Wait for Vue to render the DOM element
+        await this.$nextTick()
+
+        // THEN play the video into the DOM element
+        await this.localVideoTrack.play(`local-player-${this.uid}`)
+
         console.log('✅ Joined channel successfully')
       } catch (err) {
         this.error = `Failed to join: ${err.message}`
         console.error('Join error:', err)
       }
     },
- 
+
     async handleUserPublished(user, mediaType) {
       try {
         // Subscribe to remote user
         await this.agoraEngine.subscribe(user, mediaType)
- 
+
         if (mediaType === 'video') {
           // Check if user already exists
           if (!this.remoteUsers.find(u => u.uid === user.uid)) {
@@ -202,27 +207,27 @@ export default {
             user.videoTrack.play(`remote-player-${user.uid}`)
           }, 100)
         }
- 
+
         if (mediaType === 'audio') {
           user.audioTrack.play()
         }
- 
+
         console.log(`✅ Subscribed to user ${user.uid}`)
       } catch (err) {
         console.error('Subscribe error:', err)
       }
     },
- 
+
     async handleUserUnpublished(user, mediaType) {
       console.log(`User ${user.uid} unpublished ${mediaType}`)
     },
- 
+
     async handleUserLeft(user) {
       // Remove user from list
       this.remoteUsers = this.remoteUsers.filter(u => u.uid !== user.uid)
       console.log(`User ${user.uid} left`)
     },
- 
+
     async toggleAudio() {
       try {
         if (this.localAudioTrack) {
@@ -233,7 +238,7 @@ export default {
         this.error = `Audio toggle error: ${err.message}`
       }
     },
- 
+
     async toggleVideo() {
       try {
         if (this.localVideoTrack) {
@@ -244,7 +249,7 @@ export default {
         this.error = `Video toggle error: ${err.message}`
       }
     },
- 
+
     async leaveChannel() {
       try {
         // Stop local tracks
@@ -254,12 +259,12 @@ export default {
         if (this.localVideoTrack) {
           await this.localVideoTrack.close()
         }
- 
+
         // Leave channel
         if (this.agoraEngine) {
           await this.agoraEngine.leave()
         }
- 
+
         this.remoteUsers = []
         this.isConnected = false
         this.audioEnabled = true
@@ -271,13 +276,13 @@ export default {
       }
     }
   },
- 
+
   beforeUnmount() {
     this.leaveChannel()
   }
 }
 </script>
- 
+
 <style scoped>
 .live-stream-container {
   min-height: 100vh;
@@ -285,7 +290,7 @@ export default {
   padding: 20px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
- 
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -293,29 +298,29 @@ export default {
   margin-bottom: 30px;
   color: white;
 }
- 
+
 .header h1 {
   margin: 0;
   font-size: 32px;
 }
- 
+
 .connection-status {
   padding: 8px 16px;
   border-radius: 20px;
   font-weight: bold;
   font-size: 14px;
 }
- 
+
 .connection-status.connected {
   background-color: #4caf50;
   color: white;
 }
- 
+
 .connection-status.disconnected {
   background-color: #f44336;
   color: white;
 }
- 
+
 /* Settings Panel */
 .settings-panel {
   background: white;
@@ -327,18 +332,18 @@ export default {
   margin-right: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
- 
+
 .input-group {
   margin-bottom: 20px;
 }
- 
+
 .input-group label {
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
   color: #333;
 }
- 
+
 .input-group input {
   width: 100%;
   padding: 12px;
@@ -347,32 +352,32 @@ export default {
   font-size: 14px;
   transition: border-color 0.3s;
 }
- 
+
 .input-group input:focus {
   outline: none;
   border-color: #667eea;
 }
- 
+
 .help-text {
   text-align: center;
   margin-top: 15px;
   color: #666;
 }
- 
+
 .help-text small {
   display: inline-block;
 }
- 
+
 .help-text a {
   color: #667eea;
   text-decoration: none;
   font-weight: 600;
 }
- 
+
 .help-text a:hover {
   text-decoration: underline;
 }
- 
+
 /* Buttons */
 .btn-join, .btn-control, .btn-leave {
   padding: 12px 24px;
@@ -383,24 +388,24 @@ export default {
   cursor: pointer;
   transition: all 0.3s;
 }
- 
+
 .btn-join {
   width: 100%;
   background-color: #667eea;
   color: white;
   margin-top: 10px;
 }
- 
+
 .btn-join:hover {
   background-color: #5568d3;
   transform: translateY(-2px);
   box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
 }
- 
+
 .btn-join:active {
   transform: translateY(0);
 }
- 
+
 /* Video Grid */
 .video-grid {
   display: grid;
@@ -408,7 +413,7 @@ export default {
   gap: 20px;
   margin-bottom: 30px;
 }
- 
+
 .video-container {
   position: relative;
   background: #000;
@@ -417,13 +422,13 @@ export default {
   aspect-ratio: 4 / 3;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
- 
+
 .video-player {
   width: 100%;
   height: 100%;
   background-color: #1a1a1a;
 }
- 
+
 .user-label {
   position: absolute;
   bottom: 12px;
@@ -435,11 +440,11 @@ export default {
   font-size: 14px;
   font-weight: 600;
 }
- 
+
 .video-container.local {
   border: 3px solid #4caf50;
 }
- 
+
 /* Controls */
 .controls {
   display: flex;
@@ -448,30 +453,30 @@ export default {
   margin-bottom: 30px;
   flex-wrap: wrap;
 }
- 
+
 .btn-control {
   background-color: #4caf50;
   color: white;
 }
- 
+
 .btn-control:hover {
   background-color: #45a049;
 }
- 
+
 .btn-control.active {
   background-color: #4caf50;
   box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
 }
- 
+
 .btn-leave {
   background-color: #f44336;
   color: white;
 }
- 
+
 .btn-leave:hover {
   background-color: #da190b;
 }
- 
+
 /* User List */
 .user-list {
   background: white;
@@ -482,12 +487,12 @@ export default {
   margin-right: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
- 
+
 .user-list h3 {
   margin-top: 0;
   color: #333;
 }
- 
+
 .user-item {
   padding: 10px;
   background: #f5f5f5;
@@ -496,7 +501,7 @@ export default {
   color: #333;
   font-size: 14px;
 }
- 
+
 /* Error Message */
 .error-message {
   background: #f44336;
@@ -507,25 +512,25 @@ export default {
   text-align: center;
   font-weight: 600;
 }
- 
+
 /* Responsive */
 @media (max-width: 768px) {
   .live-stream-container {
     padding: 12px;
   }
- 
+
   .header h1 {
     font-size: 24px;
   }
- 
+
   .video-grid {
     grid-template-columns: 1fr;
   }
- 
+
   .controls {
     flex-direction: column;
   }
- 
+
   .btn-control, .btn-leave {
     width: 100%;
   }
