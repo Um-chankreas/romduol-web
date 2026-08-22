@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+
+    *,
+    ::before,
+    ::after {
+        box-sizing: border-box;
+        border-color: transparent;
+    }
+
+    html,
+    body,
+    #app {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 100vh !important;
+        overflow-x: hidden;
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Full screen solid background */
+    body {
+        background-color: #F1FCF0 !important;
+        color: #0f172a;
+    }
+
+    /* Dark mode background */
+    html.dark body {
+        background-color: #031710 !important;
+        color: #f8fafc;
+    }
+}
