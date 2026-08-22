@@ -31,30 +31,28 @@ const handleStartLive = (title) => {
       <main class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full">
         <!-- LEFT SECTION: Class Cards Grid -->
         <div class="flex-1 w-full">
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-5">
-    <ClassCard 
-      title="Grade 12 Advanced Calculus"
-      :studentCount="28"
-      :tags="['Block A', 'Room 402']"
-      :isLive="true"
-      @start-live="handleStartLive"
-    />
-    <ClassCard 
-      title="AP Physics C: Mechanics"
-      :studentCount="15"
-      :tags="['Block C', 'Lab 2']"
-      :isLive="false"
-      @start-live="handleStartLive"
-    />
-    <ClassCard 
-      title="Intro to Computer Science"
-      :studentCount="32"
-      :tags="['Online']"
-      :isLive="true"
-      @start-live="handleStartLive"
-    />
-  </div>
-</div>
+    <!-- 1 col on mobile -> 2 cols on laptops -> 3 cols on wide screens -> 4 cols on ultra-wide screens -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5">
+              <ClassCard 
+                title="Grade 12 Advanced Calculus"
+                :studentCount="28"
+                :tags="['Block A', 'Room 402']"
+                :isLive="true"
+              />
+              <ClassCard 
+                title="AP Physics C: Mechanics"
+                :studentCount="15"
+                :tags="['Block C', 'Lab 2']"
+                :isLive="false"
+              />
+              <ClassCard 
+                title="Intro to Computer Science"
+                :studentCount="32"
+                :tags="['Online']"
+                :isLive="true"
+              />
+            </div>
+          </div>
 
         <!-- RIGHT SECTION: Widgets -->
         <div class="w-full lg:w-80 shrink-0 space-y-6">
