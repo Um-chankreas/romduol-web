@@ -1,34 +1,16 @@
 <script setup>
-import { ref } from 'vue';
-import LoginView from './views/auth/LoginView.vue';
-import DashboardView from './views/dashboard/DashboardView.vue';
-import LiveStreamView from './views/live/LiveStreamView.vue';
+import { ref } from 'vue'
+import LoginView from './views/auth/LoginView.vue'
 
-const isAuthenticated = ref(true); // default true for preview
-const isStreaming = ref(false);
-const activeStreamTitle = ref('');
-
-const startLiveStream = (title) => {
-  activeStreamTitle.value = title;
-  isStreaming.value = true;
-};
+const isAuthenticated = ref(true)
 </script>
 
 <template>
-  <LoginView 
-    v-if="!isAuthenticated" 
-    @login-success="isAuthenticated = true" 
-  />
-
-  <LiveStreamView 
-    v-else-if="isStreaming" 
-    :initialChannel="activeStreamTitle"
-    @back-to-dashboard="isStreaming = false" 
-  />
-
-  <DashboardView 
-    v-else 
-    @start-live="startLiveStream"
-    @logout="isAuthenticated = false" 
-  />
+  <div class="min-h-screen bg-[#F1FCF0] dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <LoginView 
+      v-if="!isAuthenticated" 
+      @login-success="isAuthenticated = true" 
+    />
+    <router-view v-else @logout="isAuthenticated = false" />
+  </div>
 </template>
