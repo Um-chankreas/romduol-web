@@ -1,18 +1,22 @@
 <script setup>
 import { ref } from 'vue';
+import { useAuthStore } from '../../stores/auth';
 import { useTheme } from '../../composables/useTheme';
 import BaseInput from '../../components/ui/BaseInput.vue';
 import BaseButton from '../../components/ui/BaseButton.vue';
 
-const emit = defineEmits(['login-success']);
 const { isDark, toggleTheme } = useTheme();
+const authStore = useAuthStore();
 
-const teacherId = ref('');
-const username = ref('');
+const email = ref('');
+const password = ref('');
 
-const handleSubmit = () => {
-  // Emit event to parent (App.vue) upon clicking "Access Dashboard"
-  emit('login-success');
+const handleSubmit = async () => {
+  try {
+    await authStore.login(email.value, password.value);
+  } catch (err) {
+    // Error feedback is managed inside authStore.error
+  }
 };
 </script>
 
@@ -46,28 +50,45 @@ const handleSubmit = () => {
         Secure access to your classroom management dashboard.
       </p>
 
+      <!-- API Error Alert -->
+      <div 
+        v-if="authStore.error" 
+        class="w-full mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium text-left"
+      >
+        {{ authStore.error }}
+      </div>
+
       <!-- Form -->
       <form class="w-full flex flex-col gap-3.5 text-left" @submit.prevent="handleSubmit">
         <BaseInput 
-          v-model="teacherId" 
-          label="Teacher ID" 
-          placeholder="e.g. EDU-9942" 
+          v-model="email" 
+          type="email"
+          label="Email Address" 
+          placeholder="teacher@school.com" 
+          required
         />
         
         <BaseInput 
-          v-model="username" 
-          label="Username" 
-          placeholder="Network Username"
+          v-model="password" 
+          type="password"
+          label="Password" 
+          placeholder="••••••••"
+          required
         >
           <template #action>
             <a href="#" class="text-xs font-semibold text-emerald-800 dark:text-emerald-400 hover:underline">
-              Forgot ID?
+              Forgot password?
             </a>
           </template>
         </BaseInput>
 
-        <BaseButton type="submit" class="mt-1">
-          Access Dashboard &rarr;
+        <BaseButton 
+          type="submit" 
+          :disabled="authStore.loading"
+          class="mt-1 cursor-pointer disabled:opacity-50"
+        >
+          <span v-if="authStore.loading">Authenticating...</span>
+          <span v-else>Access Dashboard &rarr;</span>
         </BaseButton>
       </form>
 

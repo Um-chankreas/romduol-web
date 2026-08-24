@@ -2,6 +2,10 @@
 import { computed } from 'vue';
 
 const props = defineProps({
+  courseId: {
+    type: String,
+    required: true
+  },
   title: {
     type: String,
     required: true
@@ -44,7 +48,7 @@ const remainingStudents = computed(() => {
 
     <!-- More Options Button -->
     <button 
-      @click="emit('more-options')" 
+      @click="emit('more-options', courseId)" 
       class="absolute top-4 right-4 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition p-1.5 rounded-full z-10"
       aria-label="More options"
     >
@@ -102,7 +106,7 @@ const remainingStudents = computed(() => {
       <!-- Live Action Button -->
       <button 
         v-if="isLive" 
-        @click="emit('start-live', title)" 
+        @click="emit('start-live', courseId, title)" 
         class="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
       >
         <svg class="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
@@ -114,7 +118,7 @@ const remainingStudents = computed(() => {
       <!-- View Details Button -->
       <button 
         v-else 
-        @click="emit('view-details', title)" 
+        @click="emit('view-details', courseId)" 
         class="px-3 sm:px-4 py-2 rounded-xl bg-[#e2ede5] dark:bg-slate-800 hover:bg-[#d4e3d7] dark:hover:bg-slate-700 text-[#2c4032] dark:text-slate-200 font-bold text-xs transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
       >
         View Details

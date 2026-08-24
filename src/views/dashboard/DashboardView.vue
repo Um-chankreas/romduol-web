@@ -1,23 +1,41 @@
 <script setup>
+import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useCourseStore } from '../../stores/course';
+import { liveClassService } from '../../api/liveClass.service'; // Added backend API service
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import ClassCard from '../../components/dashboard/ClassCard.vue';
 
 const router = useRouter();
+const courseStore = useCourseStore();
 
-const handleStartLive = (title) => {
-  // Option A: Use fixed channel name as requested
-  const channel = 'rodoul-live-class-dev';
-  
-  // Resolve route path and open in new tab
-  const routeData = router.resolve({ 
-    name: 'LiveStream', 
-    params: { channelName: channel },
-    query: { title: title } // Pass classroom title as query param
-  });
+onMounted(() => {
+  courseStore.fetchCourses();
+});
 
-  window.open(routeData.href, '_blank');
+const handleStartLive = async (courseId, title) => {
+  try {
+    // 1. Call backend to create live session and generate Agora token/channel
+    const res = await liveClassService.createLiveClass({
+      course_id: courseId,
+      title: `${title} - Live Session`
+    });
+
+    if (res.success) {
+      const liveClassId = res.data.liveClass.id;
+
+      // 2. Open LiveStream view passing dynamic liveClassId as route param
+      const routeData = router.resolve({ 
+        name: 'LiveStream', 
+        params: { id: liveClassId }
+      });
+
+      window.open(routeData.href, '_blank');
+    }
+  } catch (err) {
+    console.error('Failed to start live class session:', err);
+  }
 };
 </script>
 
@@ -31,36 +49,43 @@ const handleStartLive = (title) => {
       <main class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full">
         <!-- LEFT SECTION: Class Cards Grid -->
         <div class="flex-1 w-full">
-    <!-- 1 col on mobile -> 2 cols on laptops -> 3 cols on wide screens -> 4 cols on ultra-wide screens -->
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5">
-              <ClassCard 
-                title="Grade 12 Advanced Calculus"
-                :studentCount="28"
-                :tags="['Block A', 'Room 402']"
-                :isLive="true"
-              />
-              <ClassCard 
-                title="AP Physics C: Mechanics"
-                :studentCount="15"
-                :tags="['Block C', 'Lab 2']"
-                :isLive="false"
-              />
-              <ClassCard 
-                title="Intro to Computer Science"
-                :studentCount="32"
-                :tags="['Online']"
-                :isLive="true"
-              />
-            </div>
+          <!-- Loading State -->
+          <div v-if="courseStore.loading" class="text-center py-10 text-slate-500 font-medium">
+            Loading classes...
           </div>
+
+          <!-- Error State -->
+          <div v-else-if="courseStore.error" class="p-4 rounded-xl bg-red-500/10 text-red-500 text-sm">
+            {{ courseStore.error }}
+          </div>
+
+          <!-- Empty State -->
+          <div v-else-if="courseStore.courses.length === 0" class="text-center py-10 text-slate-500">
+            No classes available yet.
+          </div>
+
+          <!-- Courses Grid -->
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5">
+            <ClassCard 
+              v-for="course in courseStore.courses"
+              :key="course.id"
+              :courseId="course.id"
+              :title="course.title"
+              :studentCount="0"
+              :tags="[course.category, course.code ? `Code: ${course.code}` : 'No Code']"
+              :isLive="true"
+              @start-live="handleStartLive"
+            />
+          </div>
+        </div>
 
         <!-- RIGHT SECTION: Widgets -->
         <div class="w-full lg:w-80 shrink-0 space-y-6">
           <div class="flex items-center justify-end gap-3">
-            <button class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-100/80 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-emerald-200/80 transition shadow-sm border border-emerald-200/60 dark:border-slate-700">
+            <button class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-100/80 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-emerald-200/80 transition shadow-sm border border-emerald-200/60 dark:border-slate-700 cursor-pointer">
               <span class="text-sm">🔗</span> Join Class
             </button>
-            <button class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition">
+            <button class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer">
               <span class="text-sm font-normal">+</span> Create Class
             </button>
           </div>

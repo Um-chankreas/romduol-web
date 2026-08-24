@@ -9,10 +9,10 @@ const routes = [
         component: DashboardView
     },
     {
-        path: '/live/:channelName',
+        path: '/live/:id',
         name: 'LiveStream',
-        component: LiveStreamView,
-        props: true
+        // Adjust the path to match your folder structure:
+        component: () => import('../views/live/LiveStreamView.vue')
     },
     // Fallback route to prevent blank screens on unmatched URLs
     {
