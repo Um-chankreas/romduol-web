@@ -38,49 +38,40 @@ onMounted(async () => {
  * Open LiveStream
  */
 const handleStartLive = async (courseId, title) => {
-  if (startingCourseId.value) {
-    return;
-  }
-
   try {
-    startingCourseId.value = courseId;
-    dashboardError.value = '';
-
     // 1. Create live class
-    const createResponse =
+    const createRes =
       await liveClassService.createLiveClass({
         course_id: courseId,
-        title: `${title} - Live Session`,
-        description: '',
+        title: `${title} - Live Session`
       });
 
-    if (!createResponse.success) {
+    if (!createRes.success) {
       throw new Error(
-        createResponse.error ||
-          'Failed to create live class'
+        createRes.error ||
+        'Failed to create live class'
       );
     }
 
-    const liveClass =
-      createResponse.data.liveClass;
-
-    const liveClassId = liveClass.id;
+    const liveClassId =
+      createRes.data.liveClass.id;
 
     console.log(
       'Live class created:',
       liveClassId
     );
 
+
     // 2. Start live class
-    const startResponse =
+    const startRes =
       await liveClassService.startLiveClass(
         liveClassId
       );
 
-    if (!startResponse.success) {
+    if (!startRes.success) {
       throw new Error(
-        startResponse.error ||
-          'Failed to start live class'
+        startRes.error ||
+        'Failed to start live class'
       );
     }
 
@@ -89,12 +80,13 @@ const handleStartLive = async (courseId, title) => {
       liveClassId
     );
 
-    // 3. Open LiveStream
+
+    // 3. Open live stream
     const routeData = router.resolve({
       name: 'LiveStream',
       params: {
-        id: liveClassId,
-      },
+        id: liveClassId
+      }
     });
 
     window.open(
@@ -102,19 +94,11 @@ const handleStartLive = async (courseId, title) => {
       '_blank'
     );
 
-  } catch (error) {
+  } catch (err) {
     console.error(
       'Failed to start live class:',
-      error
+      err
     );
-
-    dashboardError.value =
-      error.response?.data?.error ||
-      error.message ||
-      'Failed to start live class';
-
-  } finally {
-    startingCourseId.value = null;
   }
 };
 
