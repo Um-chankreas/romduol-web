@@ -51,7 +51,7 @@
     <!-- Main Content Area -->
     <main class="flex-1 relative p-4 overflow-hidden flex gap-4">
       
-      <!-- Screen Share Active Highlight Banner -->
+      <!-- Screen Share Active Banner -->
       <div 
         v-if="isScreenSharing" 
         class="absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-indigo-600/90 text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-lg border border-indigo-400/30 backdrop-blur flex items-center space-x-2"
@@ -63,9 +63,10 @@
       <!-- Video Grid Container -->
       <div class="flex-1 flex flex-col relative h-full">
         <!-- Connecting State Overlay -->
-        <div v-if="!isConnected" class="absolute inset-0 flex flex-col items-center justify-center space-y-4 text-slate-400 bg-slate-900 z-10">
+        <div v-if="!isConnected" class="absolute inset-0 flex flex-col items-center justify-center space-y-4 text-slate-400 bg-slate-900 z-10 rounded-2xl border border-slate-800">
           <div class="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
           <p class="text-sm">Connecting to live session...</p>
+          <p class="text-xs text-slate-500">{{ connectionStatus }}</p>
         </div>
 
         <!-- Dynamic Grid Layout -->
@@ -80,19 +81,20 @@
         >
           <!-- Local User Video Tile -->
           <div class="relative w-full h-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-xl group">
-            <div id="local-player" class="w-full h-full object-cover"></div>
+            <!-- Video Container -->
+            <div id="local-player" class="relative w-full h-full bg-slate-900"></div>
 
-            <!-- Video Off / Loading Overlay -->
+            <!-- Video Off Overlay -->
             <div 
               v-if="!videoEnabled && !isScreenSharing" 
-              class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900"
+              class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900"
             >
               <img :src="userAvatar" :alt="userName" class="w-20 h-20 rounded-full border-2 border-indigo-500 shadow-lg mb-2 object-cover" />
               <span class="text-sm font-medium text-slate-300">{{ userName }} (You)</span>
             </div>
 
             <!-- User Label -->
-            <div class="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-medium text-white flex items-center space-x-2">
+            <div class="absolute bottom-3 left-3 z-20 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-medium text-white flex items-center space-x-2">
               <span>{{ userName }} (You)</span>
               <span v-if="isTeacher" class="text-amber-400 font-bold">• Teacher</span>
               <span v-if="isScreenSharing" class="text-indigo-400 font-semibold">• Screen</span>
@@ -100,7 +102,7 @@
             </div>
 
             <!-- Hand Raised Badge -->
-            <div v-if="isHandRaised" class="absolute top-3 right-3 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-full text-xs font-bold shadow-md">
+            <div v-if="isHandRaised" class="absolute top-3 right-3 z-20 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-full text-xs font-bold shadow-md">
               ✋ Raised Hand
             </div>
           </div>
@@ -111,13 +113,13 @@
             :key="user.uid" 
             class="relative w-full h-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-xl"
           >
-            <div :id="`remote-player-${user.uid}`" class="w-full h-full object-cover"></div>
+            <div :id="`remote-player-${user.uid}`" class="relative w-full h-full bg-slate-900"></div>
             
-            <div v-if="!user.videoReady" class="absolute inset-0 flex items-center justify-center bg-slate-900">
+            <div v-if="!user.videoReady" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-900">
               <span class="text-sm font-medium text-slate-400">{{ user.name }}</span>
             </div>
 
-            <div class="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-medium text-white">
+            <div class="absolute bottom-3 left-3 z-20 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-medium text-white">
               {{ user.name }}
             </div>
           </div>
@@ -154,15 +156,12 @@
 
     <!-- Bottom Controls Bar -->
     <footer class="flex items-center justify-center space-x-4 px-6 py-4 bg-slate-800/90 border-t border-slate-700/50 z-10">
-      
-      <!-- Toggle Microphone -->
       <button 
         @click="toggleAudio" 
         :class="[
           'p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
           audioEnabled ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-red-500 text-white hover:bg-red-600'
         ]"
-        :title="audioEnabled ? 'Mute Microphone' : 'Unmute Microphone'"
       >
         <svg v-if="audioEnabled" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -173,7 +172,6 @@
         </svg>
       </button>
 
-      <!-- Toggle Camera -->
       <button 
         @click="toggleVideo" 
         :disabled="isScreenSharing"
@@ -182,7 +180,6 @@
           isScreenSharing ? 'opacity-40 cursor-not-allowed bg-slate-800 text-slate-500' :
           videoEnabled ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-red-500 text-white hover:bg-red-600'
         ]"
-        :title="isScreenSharing ? 'Camera disabled while screen sharing' : videoEnabled ? 'Turn Off Camera' : 'Turn On Camera'"
       >
         <svg v-if="videoEnabled" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -192,40 +189,34 @@
         </svg>
       </button>
 
-      <!-- Toggle Screen Share -->
       <button 
         @click="toggleScreenShare" 
         :class="[
           'p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
           isScreenSharing ? 'bg-indigo-600 text-white hover:bg-indigo-700 ring-4 ring-indigo-500/30' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
         ]"
-        :title="isScreenSharing ? 'Stop Screen Sharing' : 'Share Screen'"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       </button>
 
-      <!-- Raise/Lower Hand -->
       <button 
         @click="toggleHand" 
         :class="[
           'p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
           isHandRaised ? 'bg-amber-500 text-slate-950 hover:bg-amber-600' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
         ]"
-        :title="isHandRaised ? 'Lower Hand' : 'Raise Hand'"
       >
         <span class="text-lg leading-none">✋</span>
       </button>
 
-      <!-- Leave Call Button -->
       <button 
         @click="leaveLiveClass" 
         class="px-5 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition-all duration-200 shadow-lg shadow-red-600/30 flex items-center space-x-2 ml-4 cursor-pointer"
       >
         <span>Leave Call</span>
       </button>
-
     </footer>
   </div>
 </template>
@@ -238,33 +229,24 @@ import { liveClassService } from '../../services/liveClassService';
 import { authService } from '../../services/authService';
 
 const props = defineProps({
-  liveClassId: {
-    type: String,
-    default: ''
-  }
+  liveClassId: { type: String, default: '' }
 });
 
 const emit = defineEmits(['left-class']);
-
 const route = useRoute();
 const router = useRouter();
 
-// Route params fallback
 const targetClassId = computed(() => props.liveClassId || route.params.id);
 
-// Auth & User details
 const currentUser = authService.getCurrentUser();
 const isTeacher = ref(currentUser?.role === 'teacher');
 const userName = ref(currentUser?.name || 'User');
 const userAvatar = ref(currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250');
-const uid = ref(Math.floor(Math.random() * 100000));
 
-// Live Class State
 const liveClass = ref({});
 const participants = ref([]);
 const classActive = ref(false);
 
-// Agora Credentials
 let agoraEngine = null;
 let localAudioTrack = null;
 let localVideoTrack = null;
@@ -272,8 +254,8 @@ let screenTrack = null;
 
 const remoteUsers = ref([]);
 const isConnected = ref(false);
+const connectionStatus = ref('');
 
-// Controls State
 const audioEnabled = ref(true);
 const videoEnabled = ref(true);
 const isScreenSharing = ref(false);
@@ -281,23 +263,25 @@ const isHandRaised = ref(false);
 const linkCopied = ref(false);
 const currentTime = ref('');
 
-// Clock Update
+let timerId;
+
 const updateClock = () => {
   const now = new Date();
   currentTime.value = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-// Setup Live Class & Connect to Agora
 onMounted(async () => {
   updateClock();
   timerId = setInterval(updateClock, 1000);
 
   if (!targetClassId.value) {
-    console.error('No Live Class ID provided');
+    connectionStatus.value = 'Error: No class ID';
     return;
   }
 
   try {
+    connectionStatus.value = 'Loading class details...';
+
     // 1. Get Live Class Details
     const classRes = await liveClassService.getLiveClassDetails(targetClassId.value);
     const classData = classRes.data?.liveClass || classRes.data || classRes;
@@ -306,14 +290,7 @@ onMounted(async () => {
     participants.value = classData.participants || [];
     classActive.value = classData.status === 'active';
 
-    // Add current user to participant view if missing
-    if (!participants.value.some(p => p.id === currentUser?.id)) {
-      participants.value.push({
-        id: currentUser?.id || uid.value,
-        name: userName.value,
-        role: currentUser?.role || 'student'
-      });
-    }
+    connectionStatus.value = 'Fetching Agora token...';
 
     // 2. Fetch Agora Token
     const tokenRes = await liveClassService.getAgoraToken(targetClassId.value);
@@ -322,45 +299,63 @@ onMounted(async () => {
     const appId = tokenData.appId || tokenData.app_id;
     const token = tokenData.token;
     const channel = tokenData.channel || tokenData.channel_name;
+    const serverUid = tokenData.uid; // 👈 CRITICAL: Backend-generated numeric UID
 
-    if (!appId || !token || !channel) {
+    if (!appId || !token || !channel || serverUid === undefined) {
       throw new Error('Incomplete Agora credentials returned from backend');
     }
 
-    // 3. Initialize Agora Engine & Join Channel
-    await initializeAgora(appId, channel, token);
+    if (!participants.value.some(p => p.id === currentUser?.id)) {
+      participants.value.push({
+        id: currentUser?.id || serverUid,
+        name: userName.value,
+        role: currentUser?.role || 'student'
+      });
+    }
+
+    // 3. Initialize Agora Engine with server-provided UID
+    await initializeAgora(appId, channel, token, serverUid);
 
   } catch (err) {
     console.error('Failed to initialize live stream:', err);
+    connectionStatus.value = `Error: ${err.message}`;
   }
 });
 
-const initializeAgora = async (appId, channel, token) => {
+const initializeAgora = async (appId, channel, token, numericUid) => {
   try {
+    connectionStatus.value = 'Creating Agora client...';
     agoraEngine = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-    // Handle remote user streams
     agoraEngine.on('user-published', handleUserPublished);
     agoraEngine.on('user-unpublished', handleUserUnpublished);
 
-    // Create local media tracks
+    connectionStatus.value = 'Requesting camera access...';
     localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-    localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+    localVideoTrack = await AgoraRTC.createCameraVideoTrack({
+      encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
 
-    // Join channel
-    await agoraEngine.join(appId, channel, token, uid.value);
+    connectionStatus.value = 'Joining channel...';
+    // Pass numericUid to match token signature
+    await agoraEngine.join(appId, channel, token, numericUid);
 
-    // Publish local audio and video
+    connectionStatus.value = 'Publishing media...';
     await agoraEngine.publish([localAudioTrack, localVideoTrack]);
 
     isConnected.value = true;
+    connectionStatus.value = 'Playing video...';
 
-    // Play local camera video stream
+    // Allow DOM grid to render #local-player
     await nextTick();
-    await localVideoTrack.play('local-player');
+    
+    if (localVideoTrack) {
+      localVideoTrack.play('local-player', { fit: 'cover' });
+    }
 
   } catch (err) {
-    console.error('Agora engine join error:', err);
+    console.error('❌ Agora engine error:', err);
+    connectionStatus.value = `Error: ${err.message}`;
   }
 };
 
@@ -377,7 +372,7 @@ const handleUserPublished = async (user, mediaType) => {
     }
 
     await nextTick();
-    await user.videoTrack.play(`remote-player-${user.uid}`);
+    await user.videoTrack.play(`remote-player-${user.uid}`, { fit: 'cover' });
 
     const index = remoteUsers.value.findIndex(u => u.uid === user.uid);
     if (index !== -1) {
@@ -396,7 +391,6 @@ const handleUserUnpublished = (user, mediaType) => {
   }
 };
 
-// Controls Logic
 const toggleAudio = async () => {
   if (localAudioTrack) {
     audioEnabled.value = !audioEnabled.value;
@@ -426,7 +420,7 @@ const toggleScreenShare = async () => {
       await agoraEngine.publish(trackToPublish);
 
       await nextTick();
-      trackToPublish.play('local-player');
+      trackToPublish.play('local-player', { fit: 'cover' });
 
       isScreenSharing.value = true;
       trackToPublish.on('track-ended', handleStopScreenShare);
@@ -451,7 +445,7 @@ const handleStopScreenShare = async () => {
   if (localVideoTrack) {
     await agoraEngine.publish(localVideoTrack);
     await nextTick();
-    localVideoTrack.play('local-player');
+    localVideoTrack.play('local-player', { fit: 'cover' });
   }
 
   isScreenSharing.value = false;
@@ -506,9 +500,23 @@ const leaveLiveClass = async () => {
   }
 };
 
-let timerId;
 onBeforeUnmount(() => {
   clearInterval(timerId);
   leaveLiveClass();
 });
 </script>
+
+<style scoped>
+/* Ensure Agora's dynamically created divs and video tags expand properly */
+#local-player :deep(div),
+#local-player :deep(video),
+[id^="remote-player-"] :deep(div),
+[id^="remote-player-"] :deep(video) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+}
+</style>
