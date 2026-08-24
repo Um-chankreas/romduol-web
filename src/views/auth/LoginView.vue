@@ -1,21 +1,31 @@
 <script setup>
 import { ref } from 'vue';
-import { useAuthStore } from '../../stores/auth';
+import { useRouter } from 'vue-router';
+import { authService } from '../../services/authService'; // Path to your authService
 import { useTheme } from '../../composables/useTheme';
 import BaseInput from '../../components/ui/BaseInput.vue';
 import BaseButton from '../../components/ui/BaseButton.vue';
 
+const router = useRouter();
 const { isDark, toggleTheme } = useTheme();
-const authStore = useAuthStore();
 
 const email = ref('');
 const password = ref('');
+const error = ref('');
+const loading = ref(false);
 
 const handleSubmit = async () => {
+  error.value = '';
+  loading.value = true;
+
   try {
-    await authStore.login(email.value, password.value);
+    await authService.login(email.value, password.value);
+    // Redirect to Dashboard after successful login
+    router.push('/');
   } catch (err) {
-    // Error feedback is managed inside authStore.error
+    error.value = err.response?.data?.message || 'Invalid email or password.';
+  } finally {
+    loading.value = false;
   }
 };
 </script>
@@ -52,10 +62,10 @@ const handleSubmit = async () => {
 
       <!-- API Error Alert -->
       <div 
-        v-if="authStore.error" 
+        v-if="error" 
         class="w-full mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium text-left"
       >
-        {{ authStore.error }}
+        {{ error }}
       </div>
 
       <!-- Form -->
@@ -84,10 +94,10 @@ const handleSubmit = async () => {
 
         <BaseButton 
           type="submit" 
-          :disabled="authStore.loading"
+          :disabled="loading"
           class="mt-1 cursor-pointer disabled:opacity-50"
         >
-          <span v-if="authStore.loading">Authenticating...</span>
+          <span v-if="loading">Authenticating...</span>
           <span v-else>Access Dashboard &rarr;</span>
         </BaseButton>
       </form>

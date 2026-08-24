@@ -2,108 +2,93 @@
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { useCourseStore } from '../../stores/course';
-import { liveClassService } from '../../api/liveClass.service';
+import { courseService } from '../../services/courseService.js';
+import { liveClassService } from '../../services/liveClassService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import ClassCard from '../../components/dashboard/ClassCard.vue';
 
 const router = useRouter();
-const courseStore = useCourseStore();
+
+// Dashboard Reactive State
+const courses = ref([]);
+const loading = ref(false);
+const storeError = ref('');
 
 const startingCourseId = ref(null);
 const dashboardError = ref('');
 
+// Student Join Modal State
 const showJoinModal = ref(false);
 const joinClassId = ref('');
 const joinError = ref('');
 const joiningClass = ref(false);
 
-onMounted(async () => {
-  await courseStore.fetchCourses();
+// Fetch all courses on mount
+const fetchCourses = async () => {
+  loading.value = true;
+  storeError.value = '';
+  try {
+    const response = await courseService.getCourses();
+    courses.value = response.data?.courses || response.data || [];
+  } catch (err) {
+    storeError.value = err.response?.data?.message || err.message || 'Failed to load courses.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchCourses();
 });
 
 /**
- * Teacher:
- *
- * Course
- *   ↓
- * Create Live Class
- *   ↓
- * Get liveClass.id
- *   ↓
- * Start Live Class
- *   ↓
- * Open LiveStream
+ * Teacher: Direct Live Stream Start
+ * Triggered directly by @start-live on ClassCard
  */
 const handleStartLive = async (courseId, title) => {
+  startingCourseId.value = courseId;
+  dashboardError.value = '';
+
   try {
-    // 1. Create live class
-    const createRes =
-      await liveClassService.createLiveClass({
-        course_id: courseId,
-        title: `${title} - Live Session`
-      });
-
-    if (!createRes.success) {
-      throw new Error(
-        createRes.error ||
-        'Failed to create live class'
-      );
-    }
-
-    const liveClassId =
-      createRes.data.liveClass.id;
-
-    console.log(
-      'Live class created:',
-      liveClassId
+    // 1. Create live class using positional arguments: (courseId, title, description, scheduledAt)
+    const createRes = await liveClassService.createLiveClass(
+      courseId,
+      `${title} - Live Session`,
+      '', // description optional
+      new Date().toISOString()
     );
 
+    // Safely extract liveClass object from API response
+    const liveClassData = createRes.data?.liveClass || createRes.data || createRes.liveClass;
+    const liveClassId = liveClassData?.id || createRes.id;
 
-    // 2. Start live class
-    const startRes =
-      await liveClassService.startLiveClass(
-        liveClassId
-      );
-
-    if (!startRes.success) {
-      throw new Error(
-        startRes.error ||
-        'Failed to start live class'
-      );
+    if (!liveClassId) {
+      throw new Error('Could not retrieve live class ID from backend response.');
     }
 
-    console.log(
-      'Live class started:',
-      liveClassId
-    );
+    // 2. Start the live class
+    await liveClassService.startLiveClass(liveClassId);
 
-
-    // 3. Open live stream
+    // 3. Resolve path and open in a new tab
     const routeData = router.resolve({
       name: 'LiveStream',
-      params: {
-        id: liveClassId
-      }
+      params: { id: liveClassId }
     });
 
-    window.open(
-      routeData.href,
-      '_blank'
-    );
+    window.open(routeData.href, '_blank');
 
   } catch (err) {
-    console.error(
-      'Failed to start live class:',
-      err
-    );
+    console.error('Failed to start live class:', err);
+    dashboardError.value = err.response?.data?.message || err.message || 'Failed to start live session';
+  } finally {
+    startingCourseId.value = null;
   }
 };
 
 /**
- * Open Join Class modal
+ * Student Join Modal Handlers
  */
 const openJoinModal = () => {
   joinClassId.value = '';
@@ -111,38 +96,18 @@ const openJoinModal = () => {
   showJoinModal.value = true;
 };
 
-/**
- * Close Join Class modal
- */
 const closeJoinModal = () => {
-  if (joiningClass.value) {
-    return;
-  }
-
+  if (joiningClass.value) return;
   showJoinModal.value = false;
   joinClassId.value = '';
   joinError.value = '';
 };
 
-/**
- * Student:
- *
- * Enter liveClass.id
- *       ↓
- * Get class details
- *       ↓
- * Check status
- *       ↓
- * Open LiveStream
- */
 const handleJoinClass = async () => {
-  const classId =
-    joinClassId.value.trim();
+  const classId = joinClassId.value.trim();
 
   if (!classId) {
-    joinError.value =
-      'Please enter the live class ID.';
-
+    joinError.value = 'Please enter the live class ID.';
     return;
   }
 
@@ -150,58 +115,31 @@ const handleJoinClass = async () => {
     joiningClass.value = true;
     joinError.value = '';
 
-    // Get class details
-    const response =
-      await liveClassService.getLiveClassDetails(
-        classId
-      );
+    const response = await liveClassService.getLiveClassDetails(classId);
+    const liveClass = response.data?.liveClass || response.data || response;
 
-    if (!response.success) {
-      throw new Error(
-        response.error ||
-          'Live class not found'
-      );
-    }
-
-    const liveClass =
-      response.data.liveClass;
-
-    // Class must be active
     if (liveClass.status !== 'active') {
       joinError.value =
         liveClass.status === 'scheduled'
           ? 'This class has not started yet.'
           : 'This class is no longer active.';
-
       return;
     }
 
-    // Open LiveStream
     const routeData = router.resolve({
       name: 'LiveStream',
-      params: {
-        id: liveClass.id,
-      },
+      params: { id: liveClass.id }
     });
 
-    window.open(
-      routeData.href,
-      '_blank'
-    );
-
+    window.open(routeData.href, '_blank');
     closeJoinModal();
 
   } catch (error) {
-    console.error(
-      'Join class error:',
-      error
-    );
-
+    console.error('Join class error:', error);
     joinError.value =
-      error.response?.data?.error ||
+      error.response?.data?.message ||
       error.message ||
       'Failed to join live class';
-
   } finally {
     joiningClass.value = false;
   }
@@ -209,96 +147,66 @@ const handleJoinClass = async () => {
 </script>
 
 <template>
-  <div
-    class="flex flex-col md:flex-row min-h-screen bg-[#F1FCF0] dark:bg-slate-950"
-  >
+  <div class="flex flex-col md:flex-row min-h-screen bg-[#F1FCF0] dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
     <div class="flex-1 flex flex-col min-w-0">
       <Header />
 
-      <main
-        class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full"
-      >
+      <main class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full">
         <!-- LEFT -->
         <div class="flex-1 w-full">
 
           <!-- Error -->
-          <div
-            v-if="dashboardError"
-            class="mb-5 p-4 rounded-xl bg-red-500/10 text-red-500 text-sm"
-          >
+          <div v-if="dashboardError" class="mb-5 p-4 rounded-xl bg-red-500/10 text-red-500 text-sm">
             {{ dashboardError }}
           </div>
 
           <!-- Loading -->
-          <div
-            v-if="courseStore.loading"
-            class="text-center py-10 text-slate-500 font-medium"
-          >
+          <div v-if="loading" class="text-center py-10 text-slate-500 font-medium">
             Loading classes...
           </div>
 
-          <!-- Store Error -->
-          <div
-            v-else-if="courseStore.error"
-            class="p-4 rounded-xl bg-red-500/10 text-red-500 text-sm"
-          >
-            {{ courseStore.error }}
+          <!-- Store/API Error -->
+          <div v-else-if="storeError" class="p-4 rounded-xl bg-red-500/10 text-red-500 text-sm">
+            {{ storeError }}
           </div>
 
           <!-- Empty -->
-          <div
-            v-else-if="courseStore.courses.length === 0"
-            class="text-center py-10 text-slate-500"
-          >
+          <div v-else-if="courses.length === 0" class="text-center py-10 text-slate-500">
             No classes available yet.
           </div>
 
           <!-- Courses -->
-          <div
-            v-else
-            class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5"
-          >
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5">
             <ClassCard
-              v-for="course in courseStore.courses"
+              v-for="course in courses"
               :key="course.id"
               :courseId="course.id"
               :title="course.title"
               :studentCount="0"
               :tags="[
                 course.category,
-                course.code
-                  ? `Code: ${course.code}`
-                  : 'No Code'
+                course.code ? `Code: ${course.code}` : 'No Code'
               ]"
               :isLive="true"
-              :loading="
-                startingCourseId === course.id
-              "
+              :loading="startingCourseId === course.id"
               @start-live="handleStartLive"
             />
           </div>
         </div>
 
         <!-- RIGHT -->
-        <div
-          class="w-full lg:w-80 shrink-0 space-y-6"
-        >
+        <div class="w-full lg:w-80 shrink-0 space-y-6">
 
           <!-- Actions -->
-          <div
-            class="flex items-center justify-end gap-3"
-          >
+          <div class="flex items-center justify-end gap-3">
             <!-- Join -->
             <button
               @click="openJoinModal"
               class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-100/80 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-xs hover:bg-emerald-200/80 transition shadow-sm border border-emerald-200/60 dark:border-slate-700 cursor-pointer"
             >
-              <span class="text-sm">
-                🔗
-              </span>
-
+              <span class="text-sm">🔗</span>
               Join Class
             </button>
 
@@ -306,62 +214,33 @@ const handleJoinClass = async () => {
             <button
               class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer"
             >
-              <span
-                class="text-sm font-normal"
-              >
-                +
-              </span>
-
+              <span class="text-sm font-normal">+</span>
               Create Class
             </button>
           </div>
 
           <!-- Upcoming -->
-          <div
-            class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/60 dark:border-slate-800 shadow-sm"
-          >
-            <h2
-              class="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2"
-            >
+          <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/60 dark:border-slate-800 shadow-sm">
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
               📅 Upcoming Live Sessions
             </h2>
 
             <div class="space-y-3">
-
-              <div
-                class="p-3.5 rounded-2xl bg-emerald-50 dark:bg-slate-800/60 flex items-center gap-3 border border-emerald-100 dark:border-transparent"
-              >
-                <div
-                  class="bg-[#034d31] text-white px-2.5 py-1.5 rounded-xl text-center shrink-0"
-                >
-                  <span
-                    class="block text-[10px] font-bold uppercase text-emerald-200"
-                  >
-                    OCT
-                  </span>
-
-                  <span
-                    class="block text-sm font-extrabold leading-none"
-                  >
-                    12
-                  </span>
+              <div class="p-3.5 rounded-2xl bg-emerald-50 dark:bg-slate-800/60 flex items-center gap-3 border border-emerald-100 dark:border-transparent">
+                <div class="bg-[#034d31] text-white px-2.5 py-1.5 rounded-xl text-center shrink-0">
+                  <span class="block text-[10px] font-bold uppercase text-emerald-200">OCT</span>
+                  <span class="block text-sm font-extrabold leading-none">12</span>
                 </div>
 
                 <div>
-                  <p
-                    class="text-xs font-bold text-slate-900 dark:text-white"
-                  >
+                  <p class="text-xs font-bold text-slate-900 dark:text-white">
                     Midterm Review: Calculus
                   </p>
-
-                  <p
-                    class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5"
-                  >
+                  <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
                     10:00 AM - 11:30 AM
                   </p>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -374,24 +253,14 @@ const handleJoinClass = async () => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       @click.self="closeJoinModal"
     >
-      <div
-        class="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl"
-      >
-
+      <div class="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl">
         <!-- Header -->
-        <div
-          class="flex items-start justify-between mb-5"
-        >
+        <div class="flex items-start justify-between mb-5">
           <div>
-            <h2
-              class="text-xl font-bold text-slate-900 dark:text-white"
-            >
+            <h2 class="text-xl font-bold text-slate-900 dark:text-white">
               Join Live Class
             </h2>
-
-            <p
-              class="text-sm text-slate-500 dark:text-slate-400 mt-1"
-            >
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Enter the live class ID shared by your teacher.
             </p>
           </div>
@@ -415,17 +284,12 @@ const handleJoinClass = async () => {
         />
 
         <!-- Error -->
-        <p
-          v-if="joinError"
-          class="mt-3 text-sm text-red-500"
-        >
+        <p v-if="joinError" class="mt-3 text-sm text-red-500">
           {{ joinError }}
         </p>
 
         <!-- Buttons -->
-        <div
-          class="flex justify-end gap-3 mt-6"
-        >
+        <div class="flex justify-end gap-3 mt-6">
           <button
             @click="closeJoinModal"
             :disabled="joiningClass"
@@ -439,14 +303,9 @@ const handleJoinClass = async () => {
             :disabled="joiningClass"
             class="px-5 py-2.5 rounded-xl bg-[#034d31] text-white font-semibold text-sm hover:bg-[#023824] disabled:opacity-50"
           >
-            {{
-              joiningClass
-                ? 'Joining...'
-                : 'Join Class'
-            }}
+            {{ joiningClass ? 'Joining...' : 'Join Class' }}
           </button>
         </div>
-
       </div>
     </div>
   </div>
