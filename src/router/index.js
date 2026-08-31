@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { authService } from '../services/authService' // Update path to match your authService file
 
+import ClassesView from '../views/classes/ClassesView.vue'
 import DashboardView from '../views/dashboard/DashboardView.vue'
 import LoginView from '../views/auth/LoginView.vue'
 
@@ -13,6 +14,12 @@ const routes = [
     },
     {
         path: '/',
+        name: 'Classes',
+        component: ClassesView,
+        meta: { requiresAuth: true } // Protected route
+    },
+    {
+        path: '/dashboard',
         name: 'Dashboard',
         component: DashboardView,
         meta: { requiresAuth: true } // Protected route
@@ -23,10 +30,31 @@ const routes = [
         component: () => import('../views/live/LiveStreamView.vue'),
         meta: { requiresAuth: true } // Protected route
     },
+    {
+        path: '/students',
+        name: 'StudentManagement',
+        component: () => import('@/views/admin/StudentManagementView.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] } // Admin-only
+    },
     // Fallback route
     {
         path: '/:pathMatch(.*)*',
         redirect: '/'
+    },
+    {
+        path: '/courses/:id',
+        name: 'CourseDetail',
+        component: () => import('@/views/course/CourseDetailView.vue'),
+    },
+    {
+        path: '/course/:courseId/quiz/create',
+        name: 'CreateQuiz',
+        component: () => import('@/views/course/CreateQuizView.vue')
+    },
+    {
+        path: '/course/:courseId/quiz/edit/:id',
+        name: 'EditQuiz',
+        component: () => import('@/views/course/CreateQuizView.vue') // Reusing your creator view
     }
 ]
 
@@ -45,6 +73,10 @@ router.beforeEach((to, from, next) => {
     } else if (to.meta.requiresGuest && loggedIn) {
         // Redirect authenticated user trying to access /login back to /
         next('/')
+    } else if (to.meta.roles && loggedIn) {
+        // Role-gated route: bounce anyone without a matching role back home.
+        const role = authService.getCurrentUser()?.role
+        next(to.meta.roles.includes(role) ? undefined : '/')
     } else {
         // Allow navigation
         next()

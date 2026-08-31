@@ -2,14 +2,15 @@ import api from './axios'
 
 export const courseService = {
     // Create course
-    async createCourse(title, description, category, color, icon, cover_image) {
+    async createCourse(title, description, category, color, icon, cover_image, is_free = false) {
         const response = await api.post('/courses', {
             title,
             description,
             category,
             color,
             icon,
-            cover_image
+            cover_image,
+            is_free
         })
         return response.data
     },

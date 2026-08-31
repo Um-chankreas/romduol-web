@@ -20,8 +20,9 @@ const handleSubmit = async () => {
 
   try {
     await authService.login(email.value, password.value);
-    // Redirect to Dashboard after successful login
-    router.push('/');
+    // Admins land on the student portal; everyone else on their classes.
+    const role = authService.getCurrentUser()?.role;
+    router.push(role === 'admin' ? '/students' : '/');
   } catch (err) {
     error.value = err.response?.data?.message || 'Invalid email or password.';
   } finally {

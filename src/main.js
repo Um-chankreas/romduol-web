@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './style.css'
 import './assets/styles/main.css';
+import 'katex/dist/katex.min.css'
 import router from './router'
 import App from './App.vue'
 

@@ -1,7 +1,11 @@
 
 import axios from 'axios'
 
-const API_BASE_URL = 'http://192.168.0.129:5001/api'
+export const API_BASE_URL = 'http://192.168.0.241:5001/api'
+
+// Same host as the REST API, without the `/api` suffix — Socket.IO mounts at
+// `<origin>/socket.io` on the backend HTTP server.
+export const SOCKET_URL = API_BASE_URL.replace(/\/api\/?$/, '')
 
 const api = axios.create({
     baseURL: API_BASE_URL,
