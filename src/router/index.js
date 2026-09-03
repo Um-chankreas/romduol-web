@@ -36,10 +36,11 @@ const routes = [
         component: () => import('@/views/admin/StudentManagementView.vue'),
         meta: { requiresAuth: true, roles: ['admin'] } // Admin-only
     },
-    // Fallback route
     {
-        path: '/:pathMatch(.*)*',
-        redirect: '/'
+        path: '/privacy-policy',
+        name: 'PrivacyPolicy',
+        component: () => import('@/views/legal/PrivacyPolicyView.vue')
+        // Public — no auth required (needed for the app-store listing)
     },
     {
         path: '/courses/:id',
@@ -55,6 +56,11 @@ const routes = [
         path: '/course/:courseId/quiz/edit/:id',
         name: 'EditQuiz',
         component: () => import('@/views/course/CreateQuizView.vue') // Reusing your creator view
+    },
+    // Fallback route
+    {
+        path: '/:pathMatch(.*)*',
+        redirect: '/'
     }
 ]
 
