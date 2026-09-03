@@ -43,6 +43,24 @@ export const quizService = {
         return response.data
     },
 
+    // Bulk-import questions for an existing quiz from a CSV file
+    async importQuestionsFromCsv(quizId, file) {
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await api.post(`/quizzes/${quizId}/questions/import`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        return response.data
+    },
+
+    // Download the CSV template used for bulk-importing quiz questions
+    async downloadQuestionsCsvTemplate() {
+        const response = await api.get('/quizzes/questions/import/template', {
+            responseType: 'blob'
+        })
+        return response.data
+    },
+
     // High-level Auto-Save Helper (Creates or Updates based on ID presence)
     async saveQuizDraft(quizData) {
         if (quizData.id) {

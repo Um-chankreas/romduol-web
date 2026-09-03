@@ -124,12 +124,39 @@
             <h3 class="text-base font-bold text-slate-900 dark:text-white">
               Questions ({{ quiz.questions.length }})
             </h3>
-            <button 
-              @click="addQuestion" 
-              class="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
-            >
-              + Add Question
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="downloadCsvTemplate"
+                class="text-xs text-slate-500 dark:text-slate-400 font-bold hover:underline cursor-pointer"
+              >
+                Download CSV Template
+              </button>
+
+              <input
+                ref="csvFileInput"
+                type="file"
+                accept=".csv,text/csv"
+                class="hidden"
+                @change="handleCsvFileChange"
+              />
+              <button
+                type="button"
+                @click="triggerCsvImport"
+                :disabled="importingCsv"
+                class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-200 transition cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                <span v-if="importingCsv" class="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full"></span>
+                {{ importingCsv ? 'Importing...' : 'Import CSV' }}
+              </button>
+
+              <button
+                @click="addQuestion"
+                class="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
+              >
+                + Add Question
+              </button>
+            </div>
           </div>
 
           <div 
@@ -333,6 +360,125 @@ const addOption = (qIndex) => {
 
 const removeOption = (qIndex, oIndex) => {
   quiz.value.questions[qIndex].options.splice(oIndex, 1)
+}
+
+// CSV Import
+const csvFileInput = ref(null)
+const importingCsv = ref(false)
+
+// Some CSV exports (OCR'd from PDF worksheets) pack a garbled OCR line or two
+// ahead of the one clean, hand-verified LaTeX expression for the same formula.
+// Pull out just that LaTeX and wrap it in $...$ so MathInput/KaTeX renders it,
+// instead of showing the raw OCR noise.
+const LATEX_HINT = /\\(?:lim|frac|sqrt|sin|cos|tan|cot|csc|sec|ln|log|infty|to|int|sum|prod|left|right|text|cdot|times|div|leq|geq|neq|approx|pi|theta|alpha|beta|rightarrow)\b|\^\{|_\{/
+
+const extractLatexField = (raw, { wrapDisplay = false } = {}) => {
+  if (!raw) return raw
+  const text = String(raw).trim()
+  const wrap = (inner) => (wrapDisplay ? `$$${inner}$$` : `$${inner}$`)
+
+  // Prefer an explicit $$...$$ or \[...\] block — the clean, verified LaTeX
+  const displayMatch = text.match(/\$\$([\s\S]+?)\$\$/) || text.match(/\\\[([\s\S]+?)\\\]/)
+  if (displayMatch) {
+    return wrap(displayMatch[1].replace(/\s+/g, ' ').trim())
+  }
+
+  // Or an inline $...$ expression
+  const inlineMatch = text.match(/\$([^$\n]+)\$/)
+  if (inlineMatch) {
+    return wrap(inlineMatch[1].trim())
+  }
+
+  // Otherwise scan lines bottom-up for the one that looks like real LaTeX
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (LATEX_HINT.test(lines[i])) {
+      return wrap(lines[i])
+    }
+  }
+
+  // No LaTeX found — fall back to the raw text, collapsed to one line
+  return lines.join(' ')
+}
+
+const triggerCsvImport = () => {
+  csvFileInput.value?.click()
+}
+
+const downloadCsvTemplate = async () => {
+  try {
+    const blob = await quizService.downloadQuestionsCsvTemplate()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'quiz_questions_template.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to download CSV template:', error)
+    errorMessage.value = 'Failed to download CSV template.'
+  }
+}
+
+const handleCsvFileChange = async (event) => {
+  const file = event.target.files?.[0]
+  event.target.value = '' // allow re-selecting the same file later
+  if (!file) return
+
+  errorMessage.value = ''
+  successMessage.value = ''
+  importingCsv.value = true
+
+  try {
+    // Questions can only be imported into a quiz that already exists on the server
+    if (!quiz.value.id) {
+      if (!quiz.value.title || quiz.value.title.trim() === '') {
+        errorMessage.value = 'Please enter a Quiz Title before importing questions.'
+        return
+      }
+      const activeCourseId = quiz.value.course_id || courseId
+      const created = await quizService.createQuiz(activeCourseId, quiz.value)
+      quiz.value.id = created?.id || created?.data?.id
+    }
+
+    const result = await quizService.importQuestionsFromCsv(quiz.value.id, file)
+    const imported = (result?.data?.questions || result?.questions || []).map(q => {
+      const rawOptions = typeof q.options === 'string' ? JSON.parse(q.options) : q.options
+      return {
+        id: q.id,
+        question: extractLatexField(q.question, { wrapDisplay: true }),
+        options: (rawOptions || []).map(opt => extractLatexField(opt)),
+        correct_answer: extractLatexField(q.correct_answer),
+        explanation: q.explanation || '',
+        question_type: q.question_type || 'multiple_choice'
+      }
+    })
+
+    // Replace the single blank starter question instead of leaving it dangling
+    const isBlankDefault = quiz.value.questions.length === 1 && !quiz.value.questions[0].question
+    if (isBlankDefault) {
+      quiz.value.questions = imported
+    } else {
+      quiz.value.questions.push(...imported)
+    }
+
+    successMessage.value = `${imported.length} question(s) imported from CSV.`
+    setTimeout(() => {
+      successMessage.value = ''
+    }, 4000)
+  } catch (error) {
+    console.error('Failed to import CSV questions:', error)
+    const rowErrors = error?.response?.data?.data?.rowErrors
+    if (rowErrors?.length) {
+      errorMessage.value = 'CSV errors — ' + rowErrors.map(r => `Row ${r.row}: ${r.error}`).join('; ')
+    } else {
+      errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to import questions from CSV.'
+    }
+  } finally {
+    importingCsv.value = false
+  }
 }
 
 const goBack = () => {
