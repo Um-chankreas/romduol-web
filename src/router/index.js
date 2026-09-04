@@ -43,6 +43,12 @@ const routes = [
         // Public — no auth required (needed for the app-store listing)
     },
     {
+        path: '/support',
+        name: 'Support',
+        component: () => import('@/views/legal/SupportView.vue')
+        // Public — no auth required (used as the App Store "Support URL")
+    },
+    {
         path: '/courses/:id',
         name: 'CourseDetail',
         component: () => import('@/views/course/CourseDetailView.vue'),

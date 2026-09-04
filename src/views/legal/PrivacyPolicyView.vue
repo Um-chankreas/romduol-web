@@ -395,9 +395,14 @@ const scrollTo = (id) => {
           <p class="text-xs text-slate-500 dark:text-slate-400">
             Copyright © 2026 Romduol Scholars. All rights Reserved.
           </p>
-          <router-link to="/privacy-policy" class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-            Privacy Policy
-          </router-link>
+          <div class="flex items-center gap-4">
+            <router-link to="/support" class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
+              Support
+            </router-link>
+            <router-link to="/privacy-policy" class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
+              Privacy Policy
+            </router-link>
+          </div>
         </div>
       </div>
     </footer>
