@@ -7,10 +7,20 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
 }
 
+// Fold \( \) / \[ \] LaTeX delimiters (and <br>) so this renderer, which
+// only scans for $ … $ / $$ … $$, still catches them.
+function normalize(input) {
+  return String(input ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, x) => `$$${x.trim()}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, x) => `$${x.trim()}$`)
+}
+
 // Renders a string that mixes plain text with LaTeX math delimited by
 // $$...$$ (display mode) or $...$ (inline mode) into safe HTML.
-export function renderMathText(input) {
-  if (!input) return ''
+export function renderMathText(rawInput) {
+  if (!rawInput) return ''
+  const input = normalize(rawInput)
 
   const regex = /\$\$([^$]+)\$\$|\$([^$\n]+)\$/g
   let lastIndex = 0
@@ -48,5 +58,5 @@ export function renderMathText(input) {
 }
 
 export function hasMathContent(input) {
-  return /\$[^$\n]+\$/.test(input || '')
+  return /\$[^$\n]+\$|\\\(|\\\[/.test(input || '')
 }

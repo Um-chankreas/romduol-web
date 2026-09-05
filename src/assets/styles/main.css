@@ -20,7 +20,10 @@
         max-width: 100% !important;
         min-height: 100vh !important;
         overflow-x: hidden;
-        font-family: 'Inter', sans-serif;
+        /* Inter has no Khmer glyphs. The Khmer fallbacks supply them with a real
+           700 weight so **bold** renders bold. Noto Serif/Sans Khmer are loaded
+           in index.html; 'Khmer OS *' are local fonts used when present. */
+        font-family: 'Inter', 'Noto Serif Khmer', 'Khmer OS Siemreap', 'Khmer OS', 'Noto Sans Khmer', sans-serif;
     }
 
     /* Full screen solid background */

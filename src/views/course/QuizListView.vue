@@ -2,7 +2,7 @@
   <div>
     <!-- EMPTY / NO QUIZ STATE (YOUR EXACT UI) -->
     <div
-      v-if="quizzes.length === 0"
+      v-if="chapterQuizzes.length === 0"
       class="w-full pt-3 mt-3  border-slate-100 dark:border-slate-800/60 flex items-center justify-between"
     >
       <div class="text-xs text-slate-600 dark:text-slate-400 italic">
@@ -23,7 +23,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="px-2.5 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-bold flex items-center gap-1.5">
-            ❓ {{ quizzes.length }} {{ quizzes.length === 1 ? 'Quiz' : 'Quizzes' }} Attached
+            ❓ {{ chapterQuizzes.length }} {{ chapterQuizzes.length === 1 ? 'Quiz' : 'Quizzes' }} Attached
           </span>
         </div>
 
@@ -50,7 +50,7 @@
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
               <tr 
-                v-for="q in quizzes" 
+                v-for="q in chapterQuizzes" 
                 :key="q.id"
                 class="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition"
               >
@@ -123,6 +123,11 @@ const props = defineProps({
 
 const route = useRoute()
 const quizzes = ref([...props.initialQuizzes])
+
+// This list is for the chapter's own quizzes (end-of-chapter, covers all
+// units). Per-unit practice quizzes are managed from the chapter reader
+// (LessonView), so hide anything tied to a unit here.
+const chapterQuizzes = computed(() => quizzes.value.filter((q) => !q.unit_id))
 
 // Stay in sync if the parent's data changes (e.g. after it re-fetches).
 watch(

@@ -13,6 +13,13 @@ export const quizService = {
         return response.data?.data?.quizzes || response.data?.quizzes || response.data
     },
 
+    // Fetch quizzes attached to a unit (students get published only) — the
+    // "practice" quiz for that unit.
+    async getUnitQuizzes(unitId) {
+        const response = await api.get(`/quizzes/unit/${unitId}`)
+        return response.data?.data?.quizzes || response.data?.quizzes || response.data
+    },
+
     // Fetch full details for a single quiz (including questions)
     async getQuizById(quizId) {
         const response = await api.get(`/quizzes/${quizId}`)

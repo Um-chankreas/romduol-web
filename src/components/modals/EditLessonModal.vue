@@ -5,7 +5,7 @@
   >
     <div class="w-full max-w-xl rounded-[32px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all max-h-[90vh] overflow-y-auto">
       <h2 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white mb-5 text-left">
-        Edit Lesson
+        Edit Chapter
       </h2>
 
       <div class="space-y-4 mb-6 text-left">
@@ -42,58 +42,13 @@
         </div>
       </div>
 
+      <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 text-left">
+        Edit the chapter's text units from
+        <span class="font-semibold text-slate-700 dark:text-slate-300">Open chapter &amp; units → Manage units</span>.
+      </p>
+
       <!-- MEDIA -->
       <div class="space-y-3 mb-6 text-left">
-        <!-- Reading -->
-        <div class="border border-slate-200 dark:border-slate-800 rounded-xl p-4">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-xs font-bold text-slate-800 dark:text-slate-300">Reading (PDF / DOCX)</p>
-              <p class="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                <template v-if="removeDoc">Will be removed on save</template>
-                <template v-else-if="docFile">New: {{ docFile.name }}</template>
-                <template v-else-if="lesson?.file_url">Current reading attached</template>
-                <template v-else>None</template>
-              </p>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                :disabled="saving"
-                class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
-                @click="docInputRef?.click()"
-              >
-                {{ (lesson?.file_url && !removeDoc) || docFile ? 'Replace' : 'Add' }}
-              </button>
-              <button
-                v-if="lesson?.file_url && !removeDoc && !docFile"
-                type="button"
-                :disabled="saving"
-                class="px-3 py-1.5 rounded-lg text-red-600 text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition disabled:opacity-50"
-                @click="removeDoc = true"
-              >
-                Remove
-              </button>
-              <button
-                v-if="docFile || removeDoc"
-                type="button"
-                :disabled="saving"
-                class="px-3 py-1.5 rounded-lg text-slate-500 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-                @click="docFile = null; removeDoc = false"
-              >
-                Undo
-              </button>
-            </div>
-          </div>
-          <input
-            ref="docInputRef"
-            type="file"
-            class="hidden"
-            accept=".pdf,.doc,.docx,.ppt,.pptx,image/*"
-            @change="pickDoc"
-          />
-        </div>
-
         <!-- Video -->
         <div class="border border-slate-200 dark:border-slate-800 rounded-xl p-4">
           <div class="flex items-center justify-between gap-3">
@@ -191,12 +146,9 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const form = ref({ title: '', description: '', orderNumber: 0 })
-const docFile = ref(null)
 const videoFile = ref(null)
-const removeDoc = ref(false)
 const removeVideo = ref(false)
 const localError = ref(null)
-const docInputRef = ref(null)
 const videoInputRef = ref(null)
 
 watch(
@@ -208,27 +160,13 @@ watch(
         description: lesson.description || '',
         orderNumber: lesson.order_number ?? 0
       }
-      docFile.value = null
       videoFile.value = null
-      removeDoc.value = false
       removeVideo.value = false
       localError.value = null
     }
   },
   { immediate: true }
 )
-
-const pickDoc = (e) => {
-  const file = e.target.files?.[0]
-  if (!file) return
-  if (isVideoFile(file)) {
-    localError.value = 'That looks like a video — use the Video row.'
-    return
-  }
-  localError.value = null
-  docFile.value = file
-  removeDoc.value = false
-}
 
 const pickVideo = (e) => {
   const file = e.target.files?.[0]
@@ -248,8 +186,6 @@ const submit = () => {
     title: form.value.title,
     description: form.value.description,
     orderNumber: form.value.orderNumber,
-    docFile: docFile.value,
-    removeDoc: removeDoc.value,
     videoFile: videoFile.value,
     removeVideo: removeVideo.value
   })

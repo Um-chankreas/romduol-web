@@ -79,8 +79,8 @@ const putToSignedUrl = (uploadUrl, file, contentType, onProgress) => {
 }
 
 export const lessonService = {
-    // Create lesson with an optional inline file (PDF / doc / image, <= 50MB).
-    // Large videos should NOT go here — use uploadLessonVideo() instead.
+    // Create a chapter. `file` is legacy/optional; content is text units
+    // (unitService) and an optional video (uploadLessonVideo()).
     async createLesson(courseId, title, description, file, orderNumber = 0, extra = {}) {
         const formData = new FormData()
         formData.append('course_id', courseId)
@@ -160,23 +160,6 @@ export const lessonService = {
 
     async deleteLessonVideo(lessonId) {
         const response = await api.delete(`/lessons/${lessonId}/video`)
-        return response.data
-    },
-
-    // ---- Lesson reading (file_url) -------------------------------------
-
-    // Add or replace the lesson's reading (PDF / doc / image, <= 50MB).
-    async replaceLessonFile(lessonId, file) {
-        const formData = new FormData()
-        formData.append('file', file)
-        const response = await api.post(`/lessons/${lessonId}/file`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        })
-        return response.data
-    },
-
-    async deleteLessonFile(lessonId) {
-        const response = await api.delete(`/lessons/${lessonId}/file`)
         return response.data
     },
 

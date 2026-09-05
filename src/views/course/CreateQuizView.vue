@@ -93,6 +93,34 @@
               ></textarea>
             </div>
 
+            <!-- Placement -->
+            <div>
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Attached to</label>
+
+              <!-- Unit practice quiz: placement comes from where the teacher
+                   opened this (the unit reader) — shown read-only. -->
+              <div
+                v-if="quiz.unit_id"
+                class="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-sm text-slate-700 dark:text-slate-200"
+              >
+                Unit practice — <span class="font-semibold">{{ placementUnitTitle || 'this unit' }}</span>
+                <span v-if="placementChapterTitle" class="text-slate-400"> · {{ placementChapterTitle }}</span>
+              </div>
+
+              <!-- Chapter quiz: pick which chapter (covers all its units). -->
+              <select
+                v-else
+                v-model="quiz.lesson_id"
+                :disabled="!!quiz.id"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-600 disabled:opacity-60"
+              >
+                <option :value="null">— Course-wide (no chapter) —</option>
+                <option v-for="l in lessons" :key="l.id" :value="l.id">{{ l.title }}</option>
+              </select>
+
+              <p v-if="quiz.id" class="text-[11px] text-slate-400 mt-1">Placement is fixed after the first save.</p>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Passing Grade (%)</label>
@@ -165,13 +193,35 @@
             class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-4 relative"
           >
             <div class="flex items-center justify-between">
-              <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300">
-                Question {{ qIndex + 1 }}
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Question {{ qIndex + 1 }}
+                </span>
+                <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Tier
+                  <select
+                    v-model="q.difficulty"
+                    class="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 text-xs font-semibold normal-case tracking-normal focus:outline-none focus:border-emerald-600"
+                  >
+                    <option v-for="t in TIERS" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </label>
+                <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Type
+                  <select
+                    :value="q.question_type"
+                    @change="setQuestionType(q, $event.target.value)"
+                    class="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 text-xs font-semibold normal-case tracking-normal focus:outline-none focus:border-emerald-600"
+                  >
+                    <option value="QCM">Multiple choice</option>
+                    <option value="number_input">Number input</option>
+                  </select>
+                </label>
+              </div>
 
-              <button 
+              <button
                 v-if="quiz.questions.length > 1"
-                @click="removeQuestion(qIndex)" 
+                @click="removeQuestion(qIndex)"
                 class="p-1.5 rounded-lg hover:bg-red-50 text-red-500 transition cursor-pointer"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -184,8 +234,8 @@
               input-class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:border-emerald-600"
             />
 
-            <!-- Options -->
-            <div class="space-y-2 pt-2">
+            <!-- Options (multiple choice only) -->
+            <div v-if="q.question_type !== 'number_input'" class="space-y-2 pt-2">
               <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Options (Select correct radio)
               </label>
@@ -228,6 +278,21 @@
               </button>
             </div>
 
+            <!-- Numeric answer (number input only) -->
+            <div v-else class="space-y-1.5 pt-2">
+              <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Correct answer (number)
+              </label>
+              <input
+                v-model="q.correct_answer"
+                type="text"
+                inputmode="decimal"
+                placeholder="e.g. 1955"
+                class="w-48 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-600"
+              />
+              <p class="text-[11px] text-slate-400">The student's typed answer must match this exactly (spaces and commas are ignored).</p>
+            </div>
+
             <!-- Explanation (shown to students after they answer) -->
             <div class="space-y-1.5 pt-2">
               <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -249,10 +314,13 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { quizService } from '@/services/quizService'
+import { lessonService } from '@/services/lessonService'
+import { unitService } from '@/services/unitService'
 import MathInput from '@/components/ui/MathInput.vue'
+import { normalizeMath } from '@/utils/markdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,6 +339,7 @@ const quiz = ref({
   id: quizId,
   course_id: courseId,
   lesson_id: route.query.lessonId || route.query.lesson_id || null,
+  unit_id: route.query.unitId || route.query.unit_id || null,
   title: '',
   description: '',
   pass_percentage: 70,
@@ -283,10 +352,73 @@ const quiz = ref({
       options: ['', '', '', ''],
       correct_answer: '',
       explanation: '',
-      question_type: 'multiple_choice'
+      difficulty: 'Medium',
+      question_type: 'QCM'
     }
   ]
 })
+
+const TIERS = ['Easy', 'Medium', 'Hard']
+
+// quiz_questions.question_type is 'QCM' or 'number_input'. Older rows /
+// CSV exports may carry aliases ('multiple_choice', 'numeric', 'MCQ-4', …) —
+// fold everything down to the two canonical values.
+const normType = (t) => {
+  const k = String(t || '').toLowerCase().replace(/[\s_-]+/g, '')
+  return ['numberinput', 'numeric', 'numericentry', 'number', 'num', 'input'].includes(k)
+    ? 'number_input'
+    : 'QCM'
+}
+
+// ── Chapter + Unit placement ─────────────────────────────────────────────
+// A quiz belongs to a course, optionally a chapter (lesson_id), and optionally
+// a unit within that chapter (unit_id). unit_id can only be set at create time
+// (the PUT endpoint doesn't move a quiz), so pick it before the first save.
+const lessons = ref([])
+const units = ref([])
+const loadingUnits = ref(false)
+
+const placementUnitTitle = computed(() => {
+  const u = units.value.find((x) => x.id === quiz.value.unit_id)
+  return u ? `${u.order_number}. ${u.title}` : (route.query.unitTitle || '')
+})
+const placementChapterTitle = computed(() =>
+  lessons.value.find((l) => l.id === quiz.value.lesson_id)?.title || '',
+)
+
+const loadLessons = async () => {
+  const activeCourseId = quiz.value.course_id || courseId
+  if (!activeCourseId) return
+  try {
+    const res = await lessonService.getCourseLessons(activeCourseId)
+    lessons.value = res.data?.lessons || res.lessons || []
+  } catch (err) {
+    console.error('Failed to load chapters:', err)
+  }
+}
+
+const loadUnits = async (lessonId) => {
+  units.value = []
+  if (!lessonId) {
+    quiz.value.unit_id = null
+    return
+  }
+  loadingUnits.value = true
+  try {
+    const res = await unitService.listUnits(lessonId)
+    units.value = res.data?.units || []
+    // Drop a stale unit selection that isn't in the chosen chapter.
+    if (quiz.value.unit_id && !units.value.some((u) => u.id === quiz.value.unit_id)) {
+      quiz.value.unit_id = null
+    }
+  } catch (err) {
+    console.error('Failed to load units:', err)
+  } finally {
+    loadingUnits.value = false
+  }
+}
+
+watch(() => quiz.value.lesson_id, (lessonId) => loadUnits(lessonId))
 
 // Database Save Function (Triggered ONLY by manual button clicks)
 const saveQuiz = async (targetStatus = quiz.value.status) => {
@@ -346,12 +478,21 @@ const addQuestion = () => {
     options: ['', '', '', ''],
     correct_answer: '',
     explanation: '',
-    question_type: 'multiple_choice'
+    difficulty: 'Medium',
+    question_type: 'QCM'
   })
 }
 
 const removeQuestion = (index) => {
   quiz.value.questions.splice(index, 1)
+}
+
+// Switch a question between multiple choice and number input, resetting the
+// answer shape so we never send stale options / a stale correct_answer.
+const setQuestionType = (q, type) => {
+  q.question_type = type
+  q.correct_answer = ''
+  q.options = type === 'number_input' ? [] : ['', '', '', '']
 }
 
 const addOption = (qIndex) => {
@@ -446,13 +587,15 @@ const handleCsvFileChange = async (event) => {
     const result = await quizService.importQuestionsFromCsv(quiz.value.id, file)
     const imported = (result?.data?.questions || result?.questions || []).map(q => {
       const rawOptions = typeof q.options === 'string' ? JSON.parse(q.options) : q.options
+      const type = normType(q.question_type)
       return {
         id: q.id,
-        question: extractLatexField(q.question, { wrapDisplay: true }),
-        options: (rawOptions || []).map(opt => extractLatexField(opt)),
-        correct_answer: extractLatexField(q.correct_answer),
-        explanation: q.explanation || '',
-        question_type: q.question_type || 'multiple_choice'
+        question: extractLatexField(normalizeMath(q.question), { wrapDisplay: true }),
+        options: type === 'number_input' ? [] : (rawOptions || []).map(opt => extractLatexField(normalizeMath(opt))),
+        correct_answer: type === 'number_input' ? String(q.correct_answer ?? '').trim() : extractLatexField(normalizeMath(q.correct_answer)),
+        explanation: normalizeMath(q.explanation || ''),
+        difficulty: q.difficulty || 'Medium',
+        question_type: type
       }
     })
 
@@ -496,14 +639,19 @@ onMounted(async () => {
         quiz.value = {
           ...quiz.value,
           ...data,
-          questions: data.questions?.length ? data.questions.map(q => ({
-            id: q.id,
-            question: q.question,
-            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
-            correct_answer: q.correct_answer,
-            explanation: q.explanation || '',
-            question_type: q.question_type || 'multiple_choice'
-          })) : quiz.value.questions
+          questions: data.questions?.length ? data.questions.map(q => {
+            const type = normType(q.question_type)
+            const opts = typeof q.options === 'string' ? JSON.parse(q.options || '[]') : (q.options || [])
+            return {
+              id: q.id,
+              question: q.question,
+              options: type === 'number_input' ? [] : opts,
+              correct_answer: q.correct_answer,
+              explanation: q.explanation || '',
+              difficulty: q.difficulty || 'Medium',
+              question_type: type
+            }
+          }) : quiz.value.questions
         }
       }
     } catch (err) {
@@ -513,5 +661,8 @@ onMounted(async () => {
       loading.value = false
     }
   }
+
+  await loadLessons()
+  if (quiz.value.lesson_id) await loadUnits(quiz.value.lesson_id)
 })
 </script>

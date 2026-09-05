@@ -2,7 +2,6 @@
 import { ref, computed, onActivated, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
-import PdfViewerModal from '@/components/modals/PdfViewerModal.vue'
 import UploadLessonModal from '@/components/modals/UploadLessonModal.vue'
 import EditLessonModal from '@/components/modals/EditLessonModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
@@ -10,6 +9,7 @@ import Header from '@/components/layout/Header.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
+import { unitService } from '@/services/unitService'
 
 defineOptions({ name: 'CourseDetailView' })
 
@@ -35,10 +35,6 @@ const enrolledStudents = ref([])
 const loading = ref(true)
 const error = ref(null)
 const activeTab = ref('lessons')
-
-// PDF Viewer Modal States
-const showPdfModal = ref(false)
-const selectedPdf = ref(null)
 
 // Upload Modal States
 const showUploadModal = ref(false)
@@ -102,17 +98,22 @@ const tabs = computed(() => [
 
 
 // Modal Handlers in parent component
-const handleUpload = async ({ title, description, orderNumber, file, videoFile }) => {
+const handleUpload = async ({ title, description, orderNumber, videoFile, markdown }) => {
   uploading.value = true
   uploadError.value = null
   videoProgress.value = null
   try {
-    // Step 1: create the lesson (with the inline doc/PDF if one was picked).
-    const res = await lessonService.createLesson(route.params.id, title, description, file, orderNumber)
+    // Step 1: create the chapter (text-only — units and any video are added next).
+    const res = await lessonService.createLesson(route.params.id, title, description, null, orderNumber)
     let newLesson = res.data?.lesson || res
 
-    // Step 2: if a video was picked, upload it straight to storage against
-    // the lesson we just created, then merge the returned video_url.
+    // Step 2: split the pasted Markdown into units on each `## ` heading.
+    if (markdown) {
+      await unitService.bulkImport(newLesson.id, markdown)
+    }
+
+    // Step 3: if a video was picked, upload it straight to storage against
+    // the chapter we just created, then merge the returned video_url.
     if (videoFile) {
       videoProgress.value = 0
       const videoRes = await lessonService.uploadLessonVideo(newLesson.id, videoFile, {
@@ -191,25 +192,6 @@ const handleDeleteCourse = async () => {
   }
 }
 
-// PDF View Handlers
-const viewPdf = (lesson) => {
-  if (lesson.file_url) {
-    selectedPdf.value = lesson
-    showPdfModal.value = true
-  }
-}
-
-const closePdfModal = () => {
-  showPdfModal.value = false
-  selectedPdf.value = null
-}
-
-const downloadLesson = (lesson) => {
-  if (lesson?.file_url) {
-    window.open(lesson.file_url, '_blank')
-  }
-}
-
 // Video Handlers
 const watchVideo = (lesson) => {
   if (lesson?.video_url) {
@@ -247,7 +229,7 @@ const closeEditLessonModal = () => {
   lessonToEdit.value = null
 }
 
-const handleEditLesson = async ({ title, description, orderNumber, docFile, removeDoc, videoFile, removeVideo }) => {
+const handleEditLesson = async ({ title, description, orderNumber, videoFile, removeVideo }) => {
   if (!lessonToEdit.value) return
   const lessonId = lessonToEdit.value.id
 
@@ -261,19 +243,10 @@ const handleEditLesson = async ({ title, description, orderNumber, docFile, remo
       description,
       order_number: orderNumber
     })
-    // The PUT response returns storage paths (not public URLs) for file_url /
-    // video_url, so only take the plain text fields from it and let the media
-    // endpoints below supply the correct URLs.
+    // The PUT response returns a storage path (not a public URL) for
+    // video_url, so only take the plain text fields from it and let the video
+    // endpoints below supply the correct URL.
     let merged = { title, description, order_number: orderNumber }
-
-    if (removeDoc) {
-      await lessonService.deleteLessonFile(lessonId)
-      merged = { ...merged, file_url: null, file_type: null, total_pages: 0 }
-    } else if (docFile) {
-      const r = await lessonService.replaceLessonFile(lessonId, docFile)
-      const l = r.data?.lesson || {}
-      merged = { ...merged, file_url: l.file_url, file_type: l.file_type, total_pages: l.total_pages }
-    }
 
     if (removeVideo) {
       await lessonService.deleteLessonVideo(lessonId)
@@ -636,16 +609,6 @@ onMounted(() => {
 
                         <div class="flex items-center gap-1">
                           <button
-                            v-if="lesson.file_url"
-                            @click="downloadLesson(lesson)"
-                            class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition cursor-pointer"
-                            title="Download File"
-                          >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                            </svg>
-                          </button>
-                          <button
                             @click="openEditLessonModal(lesson)"
                             class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition cursor-pointer"
                             title="Edit"
@@ -666,43 +629,20 @@ onMounted(() => {
                         </div>
                       </div>
 
-                      <p class="text-sm text-slate-800 dark:text-slate-200 mb-4 font-normal text-left">
+                      <p class="text-sm text-slate-800 dark:text-slate-200 mb-3 font-normal text-left">
                         {{ lesson.title }}
                       </p>
 
+                      <!-- CHAPTER CONTENT (text units — Markdown / LaTeX) -->
+                      <router-link
+                        :to="{ name: 'Lesson', params: { lessonId: lesson.id } }"
+                        class="inline-flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition active:scale-95"
+                      >
+                        📖 Open chapter &amp; units
+                      </router-link>
+
                       <!-- ATTACHED MATERIALS & QUIZ SECTION -->
                       <div class="flex flex-wrap items-center gap-3">
-                        <!-- PDF Preview Card -->
-                        <div 
-                          v-if="lesson.file_url"
-                          @click="viewPdf(lesson)"
-                          class="flex items-start max-w-md w-full border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition group"
-                        >
-                          <div class="flex-1 p-4 bg-white dark:bg-slate-900 min-w-0 text-left">
-                            <h5 class="text-sm font-semibold text-slate-900 dark:text-white underline decoration-slate-400 group-hover:decoration-emerald-600 truncate">
-                              {{ lesson.file_name || `${lesson.title}.pdf` }}
-                            </h5>
-                            <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase mt-1 flex items-center gap-1">
-                              <svg class="w-3 h-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                              </svg>
-                              Click to View PDF
-                            </span>
-                          </div>
-                          <div class="w-32 h-20 bg-slate-100 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0 overflow-hidden">
-                            <img 
-                              v-if="lesson.thumbnail_url" 
-                              :src="lesson.thumbnail_url" 
-                              alt="Preview" 
-                              class="w-full h-full object-cover" 
-                            />
-                            <div v-else class="text-center p-2">
-                              <span class="text-2xl">📄</span>
-                            </div>
-                          </div>
-                        </div>
-
                         <!-- Video Preview Card -->
                         <div
                           v-if="lesson.video_url"
@@ -817,12 +757,6 @@ onMounted(() => {
         </div>
       </main>
     </div>
-      <PdfViewerModal 
-          v-if="showPdfModal" 
-          :pdf="selectedPdf" 
-          @close="closePdfModal" 
-          @download="downloadLesson"
-        />
       <UploadLessonModal
         v-if="showUploadModal"
         :uploading="uploading"
@@ -845,7 +779,7 @@ onMounted(() => {
       <ConfirmModal
         v-if="showDeleteLessonModal"
         title="Delete this lesson?"
-        :message="`This will permanently delete '${lessonToDelete?.title}' and its attached file. This action cannot be undone.`"
+        :message="`This will permanently delete '${lessonToDelete?.title}', its units, and any video. This action cannot be undone.`"
         confirm-label="Delete Lesson"
         :loading="deletingLesson"
         :error="deleteLessonError"
