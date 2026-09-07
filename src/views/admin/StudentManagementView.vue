@@ -4,14 +4,16 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 defineOptions({ name: 'StudentManagementView' });
 
 import { studentService } from '../../services/studentService.js';
+import { teacherService } from '../../services/teacherService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import ConfirmModal from '../../components/modals/ConfirmModal.vue';
 import StudentFormModal from '../../components/modals/StudentFormModal.vue';
+import TeacherFormModal from '../../components/modals/TeacherFormModal.vue';
 import StudentSubscriptionModal from '../../components/modals/StudentSubscriptionModal.vue';
 
-const tab = ref('students');   // 'students' | 'courses'
+const tab = ref('students');   // 'students' | 'teachers' | 'courses'
 
 // ================= STUDENTS =================
 const search = ref('');
@@ -58,6 +60,126 @@ const goToPage = (n) => {
   fetchStudents();
 };
 
+// ================= TEACHERS =================
+const tSearch = ref('');
+const tIncludeInactive = ref(false);
+
+const teachers = ref([]);
+const tLoading = ref(false);
+const tListError = ref('');
+const tPage = ref(1);
+const tLimit = ref(20);
+const tPagination = ref({ page: 1, limit: 20, total: 0, total_pages: 1 });
+const tRowBusy = reactive(new Set());
+
+const fetchTeachers = async ({ silent = false } = {}) => {
+  if (!silent) tLoading.value = true;
+  tListError.value = '';
+  try {
+    const res = await teacherService.listTeachers({
+      search: tSearch.value.trim() || undefined,
+      include_inactive: tIncludeInactive.value ? true : undefined,
+      page: tPage.value,
+      limit: tLimit.value,
+    });
+    teachers.value = res.teachers;
+    tPagination.value = res.pagination;
+  } catch (err) {
+    tListError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load teachers.';
+  } finally {
+    if (!silent) tLoading.value = false;
+  }
+};
+
+let tSearchTimer = null;
+watch(tSearch, () => {
+  clearTimeout(tSearchTimer);
+  tSearchTimer = setTimeout(() => { tPage.value = 1; fetchTeachers(); }, 350);
+});
+watch(tIncludeInactive, () => { tPage.value = 1; fetchTeachers(); });
+
+const tGoToPage = (n) => {
+  if (n < 1 || n > (tPagination.value.total_pages || 1)) return;
+  tPage.value = n;
+  fetchTeachers();
+};
+
+// ---- teacher create / edit ----
+const showTeacherModal = ref(false);
+const editingTeacher = ref(null);
+const savingTeacher = ref(false);
+const teacherFormError = ref('');
+
+const openAddTeacher = () => { editingTeacher.value = null; teacherFormError.value = ''; showTeacherModal.value = true; };
+const openEditTeacher = (t) => { editingTeacher.value = t; teacherFormError.value = ''; showTeacherModal.value = true; };
+const closeTeacherForm = () => { if (!savingTeacher.value) { showTeacherModal.value = false; editingTeacher.value = null; } };
+
+const handleTeacherSubmit = async (payload) => {
+  savingTeacher.value = true;
+  teacherFormError.value = '';
+  try {
+    if (payload.id) {
+      const { id, ...data } = payload;
+      const updated = await teacherService.updateTeacher(id, data);
+      const idx = teachers.value.findIndex((t) => t.id === id);
+      if (idx !== -1) teachers.value[idx] = { ...teachers.value[idx], ...(updated || data) };
+    } else {
+      await teacherService.createTeacher(payload);
+      tPage.value = 1;
+      await fetchTeachers({ silent: true });
+    }
+    showTeacherModal.value = false;
+    editingTeacher.value = null;
+  } catch (err) {
+    teacherFormError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to save teacher.';
+  } finally {
+    savingTeacher.value = false;
+  }
+};
+
+// ---- teacher deactivate / restore ----
+const showTeacherDeactivateModal = ref(false);
+const teacherToDeactivate = ref(null);
+const deactivatingTeacher = ref(false);
+const teacherDeactivateError = ref('');
+
+const confirmDeactivateTeacher = (t) => { teacherToDeactivate.value = t; teacherDeactivateError.value = ''; showTeacherDeactivateModal.value = true; };
+const closeTeacherDeactivate = () => { if (!deactivatingTeacher.value) { showTeacherDeactivateModal.value = false; teacherToDeactivate.value = null; } };
+
+const handleDeactivateTeacher = async () => {
+  if (!teacherToDeactivate.value) return;
+  deactivatingTeacher.value = true;
+  teacherDeactivateError.value = '';
+  try {
+    await teacherService.deactivateTeacher(teacherToDeactivate.value.id);
+    if (tIncludeInactive.value) {
+      const idx = teachers.value.findIndex((t) => t.id === teacherToDeactivate.value.id);
+      if (idx !== -1) teachers.value[idx].is_active = false;
+    } else {
+      teachers.value = teachers.value.filter((t) => t.id !== teacherToDeactivate.value.id);
+      if (tPagination.value.total) tPagination.value.total -= 1;
+    }
+    showTeacherDeactivateModal.value = false;
+    teacherToDeactivate.value = null;
+  } catch (err) {
+    teacherDeactivateError.value = err.response?.data?.error || err.message || 'Failed to deactivate teacher.';
+  } finally {
+    deactivatingTeacher.value = false;
+  }
+};
+
+const restoreTeacher = async (t) => {
+  tRowBusy.add(t.id);
+  try {
+    await teacherService.restoreTeacher(t.id);
+    t.is_active = true;
+  } catch (err) {
+    tListError.value = err.response?.data?.error || err.message || 'Failed to restore teacher.';
+  } finally {
+    tRowBusy.delete(t.id);
+  }
+};
+
 // ================= COURSES (live access) =================
 const courses = ref([]);
 const coursesLoading = ref(false);
@@ -91,6 +213,7 @@ const toggleCourseLive = async (course) => {
 
 onMounted(() => {
   fetchStudents();
+  fetchTeachers();
   fetchCourses();
 });
 
@@ -233,12 +356,20 @@ const restore = async (s) => {
             <span class="text-sm font-normal">+</span>
             Add Student
           </button>
+          <button
+            v-else-if="tab === 'teachers'"
+            @click="openAddTeacher"
+            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer active:scale-95 shrink-0"
+          >
+            <span class="text-sm font-normal">+</span>
+            Add Teacher
+          </button>
         </div>
 
         <!-- Tabs -->
         <div class="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800">
           <button
-            v-for="t in [{ id: 'students', label: 'Students' }, { id: 'courses', label: 'Course Live Access' }]"
+            v-for="t in [{ id: 'students', label: 'Students' }, { id: 'teachers', label: 'Teachers' }, { id: 'courses', label: 'Course Live Access' }]"
             :key="t.id"
             @click="tab = t.id"
             :class="[
@@ -423,8 +554,137 @@ const restore = async (s) => {
           </div>
         </template>
 
+        <!-- ===================== TEACHERS TAB ===================== -->
+        <template v-else-if="tab === 'teachers'">
+          <!-- Filters -->
+          <div class="flex flex-col md:flex-row md:items-center gap-3">
+            <div class="relative flex-1">
+              <input
+                v-model="tSearch"
+                type="text"
+                placeholder="Search name, email or phone…"
+                class="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            </div>
+
+            <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" v-model="tIncludeInactive" class="rounded accent-emerald-600" />
+              Show deactivated
+            </label>
+          </div>
+
+          <div v-if="tListError" class="p-4 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 text-sm flex justify-between items-center">
+            <span>{{ tListError }}</span>
+            <button @click="tListError = ''" class="text-xs font-bold px-2">✕</button>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
+            <div v-if="tLoading" class="p-10 text-center text-sm text-slate-500 dark:text-slate-400">Loading teachers…</div>
+            <div v-else-if="teachers.length === 0" class="p-10 text-center text-sm text-slate-500 dark:text-slate-400">
+              {{ tSearch ? 'No teachers match this search.' : 'No teachers yet. Add your first teacher.' }}
+            </div>
+
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-slate-50 dark:bg-slate-800/60 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <tr>
+                    <th class="px-4 py-3 font-bold">Teacher</th>
+                    <th class="px-4 py-3 font-bold">Phone</th>
+                    <th class="px-4 py-3 font-bold">Courses</th>
+                    <th class="px-4 py-3 font-bold">Joined</th>
+                    <th class="px-4 py-3 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tr
+                    v-for="teacher in teachers"
+                    :key="teacher.id"
+                    :class="['transition', teacher.is_active === false ? 'opacity-50' : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30']"
+                  >
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-3">
+                        <img
+                          v-if="teacher.avatar_url && !brokenAvatars.has(teacher.avatar_url)"
+                          :src="teacher.avatar_url"
+                          @error="brokenAvatars.add(teacher.avatar_url)"
+                          class="h-9 w-9 rounded-full object-cover shrink-0"
+                          alt=""
+                        />
+                        <div v-else class="h-9 w-9 rounded-full bg-[#016a36] text-white flex items-center justify-center text-xs font-bold shrink-0 select-none">
+                          {{ initialOf(teacher.name) }}
+                        </div>
+                        <div class="min-w-0">
+                          <p class="font-semibold text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                            {{ teacher.name }}
+                            <span v-if="teacher.is_active === false" class="text-[10px] font-bold text-red-500 uppercase">deactivated</span>
+                          </p>
+                          <p class="text-xs text-slate-500 dark:text-slate-400 truncate">{{ teacher.email || teacher.phone || 'No contact' }}</p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {{ teacher.phone || '—' }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {{ teacher.course_count ?? 0 }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {{ formatDate(teacher.created_at) }}
+                    </td>
+
+                    <td class="px-4 py-3">
+                      <div class="flex items-center justify-end gap-1">
+                        <button
+                          @click="openEditTeacher(teacher)"
+                          class="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                          title="Edit teacher"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                        </button>
+                        <button
+                          v-if="teacher.is_active === false"
+                          @click="restoreTeacher(teacher)"
+                          :disabled="tRowBusy.has(teacher.id)"
+                          class="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
+                          title="Restore account"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        </button>
+                        <button
+                          v-else
+                          @click="confirmDeactivateTeacher(teacher)"
+                          class="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition cursor-pointer"
+                          title="Deactivate account"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              v-if="teachers.length > 0"
+              class="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400"
+            >
+              <span>{{ tPagination.total }} teacher{{ tPagination.total === 1 ? '' : 's' }}</span>
+              <div class="flex items-center gap-2">
+                <button @click="tGoToPage(tPage - 1)" :disabled="tPage <= 1" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed">Prev</button>
+                <span>{{ tPagination.page }} / {{ tPagination.total_pages || 1 }}</span>
+                <button @click="tGoToPage(tPage + 1)" :disabled="tPage >= (tPagination.total_pages || 1)" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed">Next</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- ===================== COURSES TAB ===================== -->
-        <template v-else>
+        <template v-else-if="tab === 'courses'">
           <p class="text-sm text-slate-500 dark:text-slate-400">
             When live classes are <strong>off</strong> for a course, no student can join its live sessions — even with an active subscription.
           </p>
@@ -512,6 +772,28 @@ const restore = async (s) => {
       :error="deactivateError"
       @close="closeDeactivate"
       @confirm="handleDeactivate"
+    />
+
+    <!-- Add / Edit teacher -->
+    <TeacherFormModal
+      v-if="showTeacherModal"
+      :teacher="editingTeacher"
+      :busy="savingTeacher"
+      :error="teacherFormError"
+      @close="closeTeacherForm"
+      @submit="handleTeacherSubmit"
+    />
+
+    <!-- Deactivate teacher -->
+    <ConfirmModal
+      v-if="showTeacherDeactivateModal"
+      title="Deactivate this teacher?"
+      :message="`'${teacherToDeactivate?.name}' will no longer be able to log in. Their courses and content stay intact and you can restore the account later.`"
+      confirm-label="Deactivate"
+      :loading="deactivatingTeacher"
+      :error="teacherDeactivateError"
+      @close="closeTeacherDeactivate"
+      @confirm="handleDeactivateTeacher"
     />
   </div>
 </template>
