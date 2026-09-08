@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 
 import { authService } from '../../services/authService.js';
 import { courseService } from '../../services/courseService.js';
+import { lessonService } from '../../services/lessonService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
@@ -95,7 +96,7 @@ const closeCreateModal = () => {
   showCreateModal.value = false;
 };
 
-const handleCreateCourse = async ({ title, description, category, color, icon, is_free }) => {
+const handleCreateCourse = async ({ title, description, category, color, icon, is_free, chapters = [], openAfter = false }) => {
   try {
     creatingCourse.value = true;
     createError.value = '';
@@ -103,11 +104,21 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
     const response = await courseService.createCourse(title, description, category, color, icon, null, is_free);
     const newCourse = response.data?.course || response.course || response.data || response;
 
+    if (newCourse?.id && chapters.length) {
+      for (let i = 0; i < chapters.length; i++) {
+        await lessonService.createLesson(newCourse.id, chapters[i], '', null, i + 1);
+      }
+    }
+
     if (newCourse) {
       courses.value.unshift(newCourse);
     }
 
     showCreateModal.value = false;
+
+    if (openAfter && newCourse?.id) {
+      router.push(`/courses/${newCourse.id}`);
+    }
   } catch (err) {
     createError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create class.';
   } finally {

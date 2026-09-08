@@ -7,9 +7,11 @@ import EditLessonModal from '@/components/modals/EditLessonModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 import Header from '@/components/layout/Header.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
+import CreateAssignmentModal from '@/components/modals/CreateAssignmentModal.vue'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
 import { unitService } from '@/services/unitService'
+import { assignmentService } from '@/services/assignmentService'
 
 defineOptions({ name: 'CourseDetailView' })
 
@@ -90,9 +92,56 @@ const themeColors = [
 const tabs = computed(() => [
   { id: 'lessons', name: 'Lessons', icon: '📖', count: lessons.value.length },
   { id: 'quizzes', name: 'Quizzes', icon: '❓', count: allQuizzes.value.length },
-  { id: 'assignments', name: 'Assignments', icon: '📋', count: 0 },
+  { id: 'assignments', name: 'Assignments', icon: '📋', count: assignments.value.length },
   { id: 'students', name: 'Students', icon: '👥', count: enrolledStudents.value.length }
 ])
+
+// ── Assignments ───────────────────────────────────────────────────────────
+const assignments = ref([])
+const showAssignmentModal = ref(false)
+const assignmentToEdit = ref(null)
+const creatingAssignment = ref(false)
+const assignmentError = ref(null)
+
+const fetchAssignments = async () => {
+  try {
+    assignments.value = await assignmentService.getCourseAssignments(route.params.id)
+  } catch {
+    /* non-fatal — the tab just shows empty */
+  }
+}
+
+const openAssignmentModal = () => {
+  assignmentToEdit.value = null
+  assignmentError.value = null
+  showAssignmentModal.value = true
+}
+const closeAssignmentModal = () => {
+  if (creatingAssignment.value) return
+  showAssignmentModal.value = false
+  assignmentToEdit.value = null
+}
+const handleCreateAssignment = async (payload) => {
+  try {
+    creatingAssignment.value = true
+    assignmentError.value = null
+    const created = await assignmentService.createAssignment({ course_id: route.params.id, ...payload })
+    if (created) assignments.value.unshift(created)
+    showAssignmentModal.value = false
+  } catch (err) {
+    assignmentError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create assignment.'
+  } finally {
+    creatingAssignment.value = false
+  }
+}
+
+const formatDue = (iso) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+const isOverdue = (iso) => iso && new Date(iso) < new Date()
 
 
 
@@ -320,6 +369,7 @@ const fetchCourseDetails = async ({ silent = false } = {}) => {
 
     course.value = fetchedCourse
     lessons.value = fetchedCourse?.lessons || []
+    fetchAssignments()
   } catch (err) {
     if (!silent) {
       error.value = err.response?.data?.message || err.response?.data?.error || 'Failed to load course details.'
@@ -724,8 +774,49 @@ onMounted(() => {
                 </div>
 
                 <!-- ASSIGNMENTS TAB -->
-                <div v-else-if="activeTab === 'assignments'" class="text-center py-10 text-slate-500">
-                  <p class="text-sm">Assignments coming soon...</p>
+                <div v-else-if="activeTab === 'assignments'" class="space-y-4">
+                  <div class="flex justify-end">
+                    <button
+                      @click="openAssignmentModal"
+                      class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold transition active:scale-95"
+                    >
+                      <span class="text-sm font-normal">+</span> Create Assignment
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="assignments.length === 0"
+                    class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900/30 p-8 text-center shadow-xs"
+                  >
+                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto">📋</div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">No assignments yet</h3>
+                    <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Create one for students to submit work.</p>
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="a in assignments"
+                      :key="a.id"
+                      class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs text-left"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <h4 class="text-sm font-bold text-slate-900 dark:text-white">{{ a.title }}</h4>
+                        <span
+                          v-if="formatDue(a.due_date)"
+                          :class="[
+                            'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold',
+                            isOverdue(a.due_date)
+                              ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                          ]"
+                        >
+                          {{ isOverdue(a.due_date) ? 'Was due' : 'Due' }} {{ formatDue(a.due_date) }}
+                        </span>
+                        <span v-else class="shrink-0 text-[10px] font-bold text-slate-400">No due date</span>
+                      </div>
+                      <p v-if="a.description" class="mt-1.5 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{{ a.description }}</p>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- STUDENTS TAB -->
@@ -764,6 +855,15 @@ onMounted(() => {
         :video-progress="videoProgress"
         @close="closeUploadModal"
         @upload="handleUpload"
+      />
+      <!-- CREATE ASSIGNMENT MODAL -->
+      <CreateAssignmentModal
+        v-if="showAssignmentModal"
+        :saving="creatingAssignment"
+        :error="assignmentError"
+        :assignment="assignmentToEdit"
+        @close="closeAssignmentModal"
+        @create="handleCreateAssignment"
       />
       <!-- EDIT LESSON MODAL -->
       <EditLessonModal
