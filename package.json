@@ -12,12 +12,14 @@
     "@tailwindcss/vite": "^4.3.3",
     "agora-rtc-sdk-ng": "^4.24.7",
     "axios": "^1.19.0",
+    "chart.js": "^4.5.1",
     "katex": "^0.18.4",
     "lucide-vue-next": "^1.0.0",
     "markdown-it": "^15.0.1",
     "pinia": "^4.0.3",
     "socket.io-client": "^4.8.3",
     "vue": "^3.5.40",
+    "vue-chartjs": "^5.3.4",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {

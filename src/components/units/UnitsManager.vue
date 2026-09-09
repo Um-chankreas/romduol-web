@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { unitService } from '@/services/unitService'
+import { isLatexDocument, latexToMarkdown } from '@/utils/latexToMarkdown'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
 
 const props = defineProps({
@@ -34,6 +35,21 @@ const startEdit = (u) => {
 // ── Bulk import ────────────────────────────────────────────────────────────
 const showBulk = ref(false)
 const bulk = ref({ markdown: '', replace: false })
+
+// ── LaTeX → Markdown ──────────────────────────────────────────────────────
+// A whole `\documentclass … \end{document}` paste is converted to the
+// Markdown the LMS stores. Fires on blur, or from the "Convert LaTeX" button.
+const texNote = ref('')
+const convertField = (obj, key) => {
+  if (!isLatexDocument(obj[key])) return
+  const { markdown, warnings } = latexToMarkdown(obj[key])
+  obj[key] = markdown
+  texNote.value = warnings.length
+    ? `Converted from LaTeX — ${warnings.join(' ')}`
+    : 'Converted from LaTeX to Markdown.'
+  showPreview.value = true
+  setTimeout(() => { texNote.value = '' }, 8000)
+}
 
 const load = async () => {
   loading.value = true
@@ -166,17 +182,23 @@ onMounted(load)
       class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 space-y-3"
     >
       <p class="text-xs text-slate-600 dark:text-slate-400">
-        Paste the whole chapter's Markdown. It's split into units on every
-        <code class="text-[11px]">## </code> heading — anything above the first
-        <code class="text-[11px]">## </code> (the <code class="text-[11px]"># </code> chapter
-        title, <code class="text-[11px]">---</code> rules) is ignored.
+        Paste the whole chapter's Markdown — or a whole LaTeX document (it's
+        converted on blur). Split into units on every
+        <code class="text-[11px]">## </code> heading; anything above the first
+        <code class="text-[11px]">## </code> is ignored.
       </p>
       <textarea
         v-model="bulk.markdown"
         rows="8"
-        placeholder="# Chapter title&#10;&#10;## Unit 1: …&#10;&#10;Prose, **bold**, lists, and $x^2$ / $$…$$ for maths.&#10;&#10;## Unit 2: …"
+        placeholder="## Unit 1: …&#10;&#10;Prose, **bold**, lists, and $x^2$ / $$…$$ for maths.&#10;&#10;## Unit 2: …&#10;&#10;— or paste a LaTeX .tex document"
         :class="[inputCls, 'font-mono text-xs']"
+        @blur="convertField(bulk, 'markdown')"
       ></textarea>
+      <p v-if="isLatexDocument(bulk.markdown)" class="text-[11px] text-amber-700 dark:text-amber-300">
+        Looks like LaTeX —
+        <button type="button" class="font-semibold hover:underline" @click="convertField(bulk, 'markdown')">convert to Markdown</button>
+      </p>
+      <p v-if="texNote" class="text-[11px] text-amber-700 dark:text-amber-300">{{ texNote }}</p>
       <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
         <input v-model="bulk.replace" type="checkbox" class="rounded" />
         Replace all existing units first
@@ -271,9 +293,15 @@ onMounted(load)
       <textarea
         v-model="form.content"
         rows="6"
-        placeholder="Markdown content. History → plain prose. Maths → add $x^2$ inline or $$…$$ display."
+        placeholder="Markdown content, or paste a LaTeX document (converted on blur). History → plain prose. Maths → $x^2$ inline or $$…$$ display."
         :class="[inputCls, 'font-mono text-xs']"
+        @blur="convertField(form, 'content')"
       ></textarea>
+      <p v-if="isLatexDocument(form.content)" class="text-[11px] text-amber-700 dark:text-amber-300">
+        Looks like LaTeX —
+        <button type="button" class="font-semibold hover:underline" @click="convertField(form, 'content')">convert to Markdown</button>
+      </p>
+      <p v-if="texNote" class="text-[11px] text-amber-700 dark:text-amber-300">{{ texNote }}</p>
 
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">

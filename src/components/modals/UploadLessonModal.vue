@@ -44,29 +44,59 @@
         </div>
       </div>
 
-      <!-- Chapter content (Markdown → units) -->
+      <!-- Chapter content (Markdown / LaTeX → units) -->
       <div class="mb-5 text-left">
         <div class="flex items-center justify-between mb-2">
           <label class="block text-xs font-bold text-slate-800 dark:text-slate-300">
-            Chapter content — Markdown
+            Chapter content — Markdown or LaTeX
           </label>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+              @click="texInputRef?.click()"
+            >Import .tex</button>
+            <button
+              v-if="markdown.trim()"
+              type="button"
+              class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+              @click="showPreview = !showPreview"
+            >{{ showPreview ? 'Hide preview' : 'Preview' }}</button>
+          </div>
+        </div>
+        <input
+          ref="texInputRef"
+          type="file"
+          class="hidden"
+          accept=".tex,text/x-tex,application/x-tex"
+          @change="handleTexFile($event)"
+        />
+        <div
+          v-if="looksLikeLatex"
+          class="mb-2 flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2"
+        >
+          <span class="text-[11px] text-amber-800 dark:text-amber-200">This looks like LaTeX — convert it to Markdown?</span>
           <button
-            v-if="markdown.trim()"
             type="button"
-            class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
-            @click="showPreview = !showPreview"
-          >{{ showPreview ? 'Hide preview' : 'Preview' }}</button>
+            class="text-xs font-semibold text-amber-800 dark:text-amber-200 hover:underline shrink-0"
+            @click="convertLatex(markdown)"
+          >Convert</button>
         </div>
         <textarea
           v-model="markdown"
           rows="7"
-          placeholder="## Unit 1: …&#10;&#10;Prose, **bold**, lists. Maths: $x^2$ inline or $$…$$ display.&#10;&#10;## Unit 2: …"
+          placeholder="## Unit 1: …&#10;&#10;Prose, **bold**, lists. Maths: $x^2$ inline or $$…$$ display.&#10;&#10;## Unit 2: …&#10;&#10;— or paste a whole LaTeX document / “Import .tex”."
           class="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
         ></textarea>
+        <p v-if="texWarnings.length" class="text-[11px] text-amber-700 dark:text-amber-300 mt-1.5">
+          Converted from LaTeX — check the preview.
+          <span v-for="(w, i) in texWarnings" :key="i" class="block">• {{ w }}</span>
+        </p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
           Split into units on every <code>## </code> heading. A leading
-          <code># </code> title and <code>---</code> rules are ignored. Leave
-          empty to add units later.
+          <code># </code> title and <code>---</code> rules are ignored. With no
+          <code>## </code> the whole thing becomes one unit named after the
+          chapter. Leave empty to add units later.
         </p>
         <div
           v-if="showPreview"
@@ -151,6 +181,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { isVideoFile } from '@/services/lessonService'
+import { isLatexDocument, latexToMarkdown } from '@/utils/latexToMarkdown'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
 
 const props = defineProps({
@@ -171,6 +202,30 @@ const videoFile = ref(null)
 const dragging = ref(false)
 const localError = ref(null)
 const videoInputRef = ref(null)
+const texInputRef = ref(null)
+const texWarnings = ref([])
+
+const looksLikeLatex = computed(() => isLatexDocument(markdown.value))
+
+const convertLatex = (raw) => {
+  const { markdown: md, warnings } = latexToMarkdown(raw)
+  markdown.value = md
+  texWarnings.value = warnings
+  showPreview.value = true
+}
+
+const handleTexFile = async (e) => {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    if (isLatexDocument(text)) convertLatex(text)
+    else { markdown.value = text; texWarnings.value = [] }
+  } catch {
+    localError.value = 'Could not read that file.'
+  }
+}
 
 const assignVideo = (file) => {
   if (!file) return
@@ -190,12 +245,18 @@ const handleDrop = (e) => {
 
 const submitUpload = () => {
   if (!form.value.title) return
+  let md = markdown.value.trim()
+  // Units are split on `## ` — if the content has none (e.g. a converted
+  // single-topic .tex), wrap it as one unit named after the chapter.
+  if (md && !/^##\s/m.test(md)) {
+    md = `## ${form.value.title}\n\n${md}`
+  }
   emit('upload', {
     title: form.value.title,
     description: form.value.description,
     orderNumber: form.value.orderNumber,
     videoFile: videoFile.value,
-    markdown: markdown.value.trim() || null
+    markdown: md || null
   })
 }
 </script>
