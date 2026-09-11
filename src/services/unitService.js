@@ -56,4 +56,25 @@ export const unitService = {
         const response = await api.delete(`/units/${id}`)
         return response.data
     },
+
+    // Upload a figure image for a chapter the teacher owns (replaces a
+    // ```figure placeholder the LaTeX importer left). Returns { url, path }.
+    async uploadFigureImage(lessonId, file) {
+        const formData = new FormData()
+        formData.append('image', file)
+        formData.append('lesson_id', lessonId)
+        const response = await api.post('/units/figure-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return response.data
+    },
+
+    // Render a TikZ/pgfplots figure to an image (node-tikzjax, no LaTeX
+    // install needed; rasterized to PNG server-side). Used by
+    // latexToMarkdown's renderPendingFigures() to turn a `figure-tikz`
+    // placeholder into an actual diagram. Returns { dataUrl }.
+    async renderTikzFigure(source) {
+        const response = await api.post('/units/render-tikz', { source })
+        return response.data
+    },
 }

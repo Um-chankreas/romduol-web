@@ -92,6 +92,7 @@
           Converted from LaTeX — check the preview.
           <span v-for="(w, i) in texWarnings" :key="i" class="block">• {{ w }}</span>
         </p>
+        <p v-if="renderingFigures > 0" class="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1.5">Rendering diagram(s)…</p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
           Split into units on every <code>## </code> heading. A leading
           <code># </code> title and <code>---</code> rules are ignored. With no
@@ -168,7 +169,7 @@
         </button>
         <button
           @click="submitUpload"
-          :disabled="busy || !form.title"
+          :disabled="busy || !form.title || renderingFigures > 0"
           class="px-5 py-2 rounded-full bg-[#033B26] hover:bg-[#022819] disabled:bg-gray-400 text-white text-sm font-semibold transition cursor-pointer disabled:opacity-50 active:scale-95"
         >
           {{ busy ? 'Saving...' : 'Create chapter' }}
@@ -181,7 +182,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { isVideoFile } from '@/services/lessonService'
-import { isLatexDocument, latexToMarkdown } from '@/utils/latexToMarkdown'
+import { unitService } from '@/services/unitService'
+import { isLatexDocument, latexToMarkdown, renderPendingFigures } from '@/utils/latexToMarkdown'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
 
 const props = defineProps({
@@ -206,12 +208,31 @@ const texInputRef = ref(null)
 const texWarnings = ref([])
 
 const looksLikeLatex = computed(() => isLatexDocument(markdown.value))
+const renderingFigures = ref(0) // >0 while a TikZ figure is being rendered
 
-const convertLatex = (raw) => {
+const convertLatex = async (raw) => {
   const { markdown: md, warnings } = latexToMarkdown(raw)
   markdown.value = md
   texWarnings.value = warnings
   showPreview.value = true
+
+  // Auto-render any TikZ figure to a real diagram (node-tikzjax, server-side).
+  // One that fails falls back to a "```figure" placeholder — there's no
+  // upload UI in this modal, so it just stays as a note in the Markdown; the
+  // teacher can fill it in later from the chapter's unit editor.
+  if (/```figure-tikz\b/.test(markdown.value)) {
+    renderingFigures.value++
+    try {
+      const { markdown: rendered, failed } = await renderPendingFigures(
+        markdown.value,
+        (source) => unitService.renderTikzFigure(source).then((r) => r.data.dataUrl),
+      )
+      markdown.value = rendered
+      if (failed) texWarnings.value = [...texWarnings.value, `${failed} figure(s) couldn't be auto-rendered — add ${failed === 1 ? 'it' : 'them'} from the unit editor after creating the chapter.`]
+    } finally {
+      renderingFigures.value--
+    }
+  }
 }
 
 const handleTexFile = async (e) => {
@@ -220,7 +241,7 @@ const handleTexFile = async (e) => {
   if (!file) return
   try {
     const text = await file.text()
-    if (isLatexDocument(text)) convertLatex(text)
+    if (isLatexDocument(text)) await convertLatex(text)
     else { markdown.value = text; texWarnings.value = [] }
   } catch {
     localError.value = 'Could not read that file.'

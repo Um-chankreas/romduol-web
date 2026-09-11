@@ -39,12 +39,31 @@ function restoreMath(s, store) {
   return s.replace(/@@M(\d+)@@/g, (_, i) => store[Number(i)] ?? '')
 }
 
+// btoa/atob are ASCII-only — go via UTF-8 percent-encoding so Khmer text
+// inside a figure's TikZ source (or an SVG's embedded labels) round-trips.
+function encodeBase64Utf8(str) {
+  return btoa(unescape(encodeURIComponent(str)))
+}
+function decodeBase64Utf8(b64) {
+  try {
+    return decodeURIComponent(escape(atob(b64)))
+  } catch {
+    return atob(b64)
+  }
+}
+
 // Inline / leaf LaTeX → Markdown. Runs on math-free text only.
 function cleanInline(input) {
   let s = String(input)
 
   // argument-less font / series / shape switches
   s = s.replace(/\\(?:kh|khmerfont|normalfont|rmfamily|sffamily|ttfamily|bfseries|itshape|mdseries|upshape|scshape|selectfont|par|noindent|centering|raggedright|raggedleft|displaystyle|textstyle|protect|leavevmode|null)\b/g, ' ')
+
+  // A size switch stuck directly onto the next command / group, e.g.
+  // `{\Large\textbf{X}}` or `\LARGE\section{…}` — drop it so the command it
+  // hugs is handled cleanly (otherwise `\textbf` matches but the leftover
+  // `\Large` mangles the `**` markers).
+  s = s.replace(/\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge)(?=\s*[\\{])/g, '')
 
   // emphasis / verbatim (before sizing so `{\Large \textbf{X}}` collapses).
   // The content is flattened to one line — a `\\` or newline inside would
@@ -219,9 +238,38 @@ export function latexToMarkdown(input) {
   // 5. Block environments → Markdown. Structural envs (lists, tables) are
   //    converted FIRST and repeatedly, so a wrapper like `tcolorbox` that
   //    contains them sees Markdown, not raw `\begin{tabular}`.
-  s = s.replace(/\\begin\s*\{(tikzpicture)\}[\s\S]*?\\end\s*\{\1\}/g, () => {
-    warnings.push('A TikZ figure was dropped — pictures aren’t supported.')
-    return ''
+  // TikZ / pgfplots pictures are rendered server-side to real diagrams (see
+  // renderPendingFigures() below) — a `figure-tikz` fence carries the caption
+  // + the original source (base64, single line) so that async pass can turn
+  // it into `![…](data:image/svg+xml;…)`. `\includegraphics` has no source to
+  // render, so it stays a one-line `figure` placeholder the teacher fills in
+  // by uploading an image (see UnitsManager.vue). `figure` / `wrapfigure`
+  // wrappers and a `\caption{…}` are unwrapped to a caption line above.
+  s = s.replace(
+    /\\begin\s*\{(figure|wrapfigure|figure\*)\}\s*(?:\[[^\]]*\]|\{[^{}]*\})*([\s\S]*?)\\end\s*\{\1\}/g,
+    (_, env, b) => `\n\n${b.trim()}\n\n`,
+  )
+  const figurePlaceholder = (caption) =>
+    `\n\n${tok(math, '```figure\n' + (caption || 'Diagram — upload an image to replace this placeholder.').replace(/\s+/g, ' ').trim() + '\n```')}\n\n`
+  const figureTikzPlaceholder = (caption, texSource) =>
+    `\n\n${tok(math, '```figure-tikz\n' + caption.replace(/\s+/g, ' ').trim() + '\n' + encodeBase64Utf8(texSource) + '\n```')}\n\n`
+  s = s.replace(
+    /(?:\\begin\s*\{center\}\s*)?\\begin\s*\{(tikzpicture|pgfpicture|axis)\}([\s\S]*?)\\end\s*\{\1\}(?:\s*\\end\s*\{center\})?/g,
+    (_, env, body) => {
+      warnings.push('A TikZ/plot figure will be rendered automatically.')
+      // The body may hold stashed @@M…@@ math tokens — put those back so the
+      // kept source is real LaTeX, collapsed to single newlines (blank lines
+      // aren't meaningful in TikZ, and every reader here treats a blank line
+      // as a new paragraph, so the fence must not contain one).
+      const source = restoreMath(`\\begin{${env}}${body}\\end{${env}}`, math).replace(/\n{2,}/g, '\n').trim()
+      return figureTikzPlaceholder('Diagram (from a TikZ/plot figure)', source)
+    },
+  )
+  // A leftover \caption{…} (its figure wrapper is gone) → an italic caption line.
+  s = s.replace(/\\caption\s*\{([^{}]*)\}/g, (_, x) => `\n\n*${x.trim()}*\n\n`)
+  s = s.replace(/\\includegraphics\b(?:\[[^\]]*\])?\s*\{([^{}]*)\}/g, (_, p) => {
+    warnings.push('An \\includegraphics image became a placeholder — upload the image to the unit.')
+    return figurePlaceholder(`Image "${p.trim()}" — upload it to replace this placeholder.`)
   })
   const listRe = /\\begin\s*\{(itemize|enumerate|description)\}([\s\S]*?)\\end\s*\{\1\}/g
   // column spec can nest one level of braces, e.g. {p{6cm} p{4cm}} or {@{}l l@{}}
@@ -265,4 +313,45 @@ export function latexToMarkdown(input) {
     .trim()
 
   return { markdown: s, warnings: [...new Set(warnings)] }
+}
+
+const FIGURE_TIKZ_RE = /```figure-tikz\n([^\n]*)\n([^\n]*)\n```/g
+
+/**
+ * Finds every `figure-tikz` placeholder latexToMarkdown() left for a TikZ /
+ * pgfplots figure and renders it via `renderFn(texSource) => Promise<dataUrl>`
+ * (POST /api/units/render-tikz — see unitService.renderTikzFigure, which
+ * rasterizes to a `data:image/png;…` URL server-side: markdown-it's link
+ * validator rejects `data:image/svg+xml`), embedding it as `![caption](url)`.
+ *
+ * A figure that fails to render (unsupported package, a syntax error
+ * node-tikzjax can't parse, the request failing) falls back to the same
+ * one-line `figure` placeholder `\includegraphics` gets, so the teacher can
+ * still add it by hand instead of the raw fence surviving into saved content.
+ */
+export async function renderPendingFigures(markdown, renderFn) {
+  const src = String(markdown || '')
+  const re = new RegExp(FIGURE_TIKZ_RE.source, 'g')
+  let out = ''
+  let lastIndex = 0
+  let rendered = 0
+  let failed = 0
+  let m
+  while ((m = re.exec(src)) !== null) {
+    out += src.slice(lastIndex, m.index)
+    lastIndex = m.index + m[0].length
+    const caption = m[1].trim()
+    const texSource = decodeBase64Utf8(m[2])
+    try {
+      const dataUrl = await renderFn(texSource)
+      if (!dataUrl) throw new Error('No image returned')
+      out += `![${caption.replace(/[[\]]/g, '')}](${dataUrl})`
+      rendered++
+    } catch {
+      out += '```figure\n' + caption + ' — upload an image to replace this.\n```'
+      failed++
+    }
+  }
+  out += src.slice(lastIndex)
+  return { markdown: out, rendered, failed }
 }

@@ -164,4 +164,37 @@ const html = computed(() => renderMarkdown(props.source))
 .markdown-content .katex-display {
   margin: 0;
 }
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.3em auto;
+  border-radius: 10px;
+}
+
+/* Placeholder left by the LaTeX importer where a TikZ / image figure was. */
+.markdown-content .unit-figure-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 1.3em 0;
+  padding: 1.1em 1.2em;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+.dark .markdown-content .unit-figure-placeholder {
+  border-color: #334155;
+  background: #0f172a;
+  color: #94a3b8;
+}
+.markdown-content .unit-figure-placeholder__icon {
+  font-size: 1.25em;
+  line-height: 1;
+}
 </style>

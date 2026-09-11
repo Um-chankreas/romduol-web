@@ -132,6 +132,33 @@ const md = new MarkdownIt({
   typographer: false,
 }).use(mathPlugin)
 
+// A ```figure … ``` fence is a placeholder left by the LaTeX importer where a
+// TikZ / \includegraphics figure was — its first line is the caption, the rest
+// is the original source (kept so nothing is lost). Render a friendly box; the
+// unit editor turns it into an "Upload image" slot.
+const defaultFence =
+  md.renderer.rules.fence ||
+  ((tokens, i, options, env, self) => self.renderToken(tokens, i, options))
+md.renderer.rules.fence = (tokens, i, options, env, self) => {
+  const token = tokens[i]
+  // `figure` = the manual "upload an image" placeholder; `figure-tikz` = a
+  // TikZ figure not yet rendered (or one that failed to). Both render the
+  // same way — the box is only ever seen mid-import, since latexToMarkdown's
+  // renderPendingFigures() replaces `figure-tikz` before content is saved.
+  if (/^figure(-tikz)?$/.test(token.info.trim().toLowerCase())) {
+    const body = token.content.replace(/\n+$/, '')
+    const nl = body.indexOf('\n')
+    const caption = (nl === -1 ? body : body.slice(0, nl)).trim()
+    return (
+      `<div class="unit-figure-placeholder" role="img" aria-label="${md.utils.escapeHtml(caption)}">` +
+      `<span class="unit-figure-placeholder__icon">📊</span>` +
+      `<span>${md.utils.escapeHtml(caption || 'Figure — an image will be added here.')}</span>` +
+      `</div>\n`
+    )
+  }
+  return defaultFence(tokens, i, options, env, self)
+}
+
 // Open links in a new tab.
 const defaultLinkOpen =
   md.renderer.rules.link_open ||
