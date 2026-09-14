@@ -18,6 +18,17 @@ const submitting = ref(false)
 const result = ref(null)        // { score, passed, correct_answers, total_questions, review, xp_awarded }
 
 const started = ref(false)
+// One question shown at a time (Back/Next) instead of the whole bank in one
+// scrolling list or one big upfront fetch — a teacher's bank can run into
+// the hundreds, and there's nothing to save back here (unlike the editors),
+// so each question is only fetched the moment Next actually needs it.
+// Already-fetched questions stay cached in quiz.value.questions, so Back
+// never re-fetches. For a student the server always returns their whole
+// (small, capped) draw in one response regardless of page/limit, so this
+// degrades to a single request with totalCount === questions.length.
+const currentIndex = ref(0)
+const totalCount = ref(0)
+const nextLoading = ref(false)
 
 const load = async () => {
   loading.value = true
@@ -26,11 +37,14 @@ const load = async () => {
   result.value = null
   answers.value = {}
   started.value = false
+  currentIndex.value = 0
+  totalCount.value = 0
   try {
     const quizzes = await quizService.getUnitQuizzes(props.unitId)
     const published = (quizzes || []).find((q) => q.status === 'published') || (quizzes || [])[0]
     if (!published) { loading.value = false; return }
-    quiz.value = await quizService.getQuizById(published.id)
+    quiz.value = await quizService.getQuizById(published.id, { page: 1, limit: 1 })
+    totalCount.value = quiz.value.pagination?.total ?? (quiz.value.questions || []).length
   } catch (err) {
     error.value = err.response?.data?.error || err.message || 'Failed to load practice'
   } finally {
@@ -39,6 +53,28 @@ const load = async () => {
 }
 
 const questions = computed(() => quiz.value?.questions || [])
+const currentQuestion = computed(() => questions.value[currentIndex.value] || null)
+const isLastQuestion = computed(() => currentIndex.value >= totalCount.value - 1)
+const goBack = () => { if (currentIndex.value > 0) currentIndex.value-- }
+const goNext = async () => {
+  if (isLastQuestion.value) return
+  const nextIndex = currentIndex.value + 1
+  if (nextIndex >= questions.value.length) {
+    nextLoading.value = true
+    error.value = null
+    try {
+      const page = questions.value.length + 1 // one question per page
+      const next = await quizService.getQuizById(quiz.value.id, { page, limit: 1 })
+      quiz.value.questions = [...questions.value, ...(next.questions || [])]
+    } catch (err) {
+      error.value = err.response?.data?.error || err.message || 'Failed to load the next question'
+      return
+    } finally {
+      nextLoading.value = false
+    }
+  }
+  currentIndex.value = nextIndex
+}
 const answeredCount = computed(
   () => questions.value.filter((q) => {
     const a = answers.value[q.id]
@@ -85,6 +121,7 @@ const retake = () => {
   result.value = null
   answers.value = {}
   started.value = true
+  currentIndex.value = 0
 }
 
 // Canonical question types are 'QCM' / 'number_input'; tolerate legacy aliases.
@@ -141,7 +178,7 @@ watch(
       <!-- Intro -->
       <div v-if="!started && !result" class="space-y-3">
         <p class="text-sm text-slate-600 dark:text-slate-400">
-          {{ questions.length }} question{{ questions.length === 1 ? '' : 's' }} ·
+          {{ totalCount }} question{{ totalCount === 1 ? '' : 's' }} ·
           pass mark {{ quiz.pass_percentage ?? 70 }}%.
         </p>
         <button
@@ -153,95 +190,120 @@ watch(
         </button>
       </div>
 
-      <!-- Questions -->
-      <ol v-else class="space-y-6">
-        <li v-for="(q, i) in questions" :key="q.id">
-          <div class="flex gap-2">
-            <span class="text-sm font-bold text-slate-400 shrink-0">{{ i + 1 }}.</span>
-            <div class="flex-1 min-w-0 space-y-2">
-              <span
-                v-if="q.difficulty"
+      <!-- Current question -->
+      <div v-else-if="currentQuestion" class="space-y-6">
+        <div class="flex gap-2">
+          <span class="text-sm font-bold text-slate-400 shrink-0">{{ currentIndex + 1 }}.</span>
+          <div class="flex-1 min-w-0 space-y-2">
+            <span
+              v-if="currentQuestion.difficulty"
+              :class="[
+                'inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide',
+                tierClass(currentQuestion.difficulty),
+              ]"
+            >{{ currentQuestion.difficulty }}</span>
+            <MarkdownContent :source="currentQuestion.question" class="text-sm" />
+
+            <!-- Numeric -->
+            <input
+              v-if="qType(currentQuestion) === 'number_input'"
+              v-model="answers[currentQuestion.id]"
+              :disabled="!!result"
+              type="text"
+              inputmode="decimal"
+              placeholder="Your answer"
+              class="w-40 px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60"
+            />
+
+            <!-- Multiple choice -->
+            <div v-else class="space-y-1.5">
+              <label
+                v-for="opt in currentQuestion.options"
+                :key="opt"
                 :class="[
-                  'inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide',
-                  tierClass(q.difficulty),
+                  'flex items-start gap-2.5 px-3 py-2 rounded-lg border cursor-pointer text-sm transition',
+                  result
+                    ? (opt === reviewById[currentQuestion.id]?.correct_answer
+                        ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
+                        : (opt === answers[currentQuestion.id]
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
+                            : 'border-slate-200 dark:border-slate-800'))
+                    : (opt === answers[currentQuestion.id]
+                        ? 'border-emerald-400 bg-emerald-50/60 dark:bg-slate-800'
+                        : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60'),
                 ]"
-              >{{ q.difficulty }}</span>
-              <MarkdownContent :source="q.question" class="text-sm" />
-
-              <!-- Numeric -->
-              <input
-                v-if="qType(q) === 'number_input'"
-                v-model="answers[q.id]"
-                :disabled="!!result"
-                type="text"
-                inputmode="decimal"
-                placeholder="Your answer"
-                class="w-40 px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60"
-              />
-
-              <!-- Multiple choice -->
-              <div v-else class="space-y-1.5">
-                <label
-                  v-for="opt in q.options"
-                  :key="opt"
-                  :class="[
-                    'flex items-start gap-2.5 px-3 py-2 rounded-lg border cursor-pointer text-sm transition',
-                    result
-                      ? (opt === reviewById[q.id]?.correct_answer
-                          ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
-                          : (opt === answers[q.id]
-                              ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
-                              : 'border-slate-200 dark:border-slate-800'))
-                      : (opt === answers[q.id]
-                          ? 'border-emerald-400 bg-emerald-50/60 dark:bg-slate-800'
-                          : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60'),
-                  ]"
-                >
-                  <input
-                    type="radio"
-                    class="mt-0.5"
-                    :name="q.id"
-                    :value="opt"
-                    v-model="answers[q.id]"
-                    :disabled="!!result"
-                  />
-                  <span class="flex-1 text-slate-700 dark:text-slate-300 markdown-inline" v-html="renderInline(opt)"></span>
-                </label>
-              </div>
-
-              <!-- Review feedback -->
-              <div
-                v-if="result && reviewById[q.id]"
-                class="text-xs rounded-lg px-3 py-2 mt-1"
-                :class="reviewById[q.id].is_correct
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300'"
               >
-                <p class="font-semibold">
-                  <template v-if="reviewById[q.id].is_correct">✓ Correct</template>
-                  <template v-else>
-                    ✗ Correct answer: <span class="markdown-inline" v-html="renderInline(reviewById[q.id].correct_answer)"></span>
-                  </template>
-                </p>
-                <p v-if="reviewById[q.id].explanation" class="mt-0.5 opacity-90 markdown-inline" v-html="renderInline(reviewById[q.id].explanation)"></p>
-              </div>
+                <input
+                  type="radio"
+                  class="mt-0.5"
+                  :name="currentQuestion.id"
+                  :value="opt"
+                  v-model="answers[currentQuestion.id]"
+                  :disabled="!!result"
+                />
+                <span class="flex-1 text-slate-700 dark:text-slate-300 markdown-inline" v-html="renderInline(opt)"></span>
+              </label>
+            </div>
+
+            <!-- Review feedback -->
+            <div
+              v-if="result && reviewById[currentQuestion.id]"
+              class="text-xs rounded-lg px-3 py-2 mt-1"
+              :class="reviewById[currentQuestion.id].is_correct
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
+                : 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300'"
+            >
+              <p class="font-semibold">
+                <template v-if="reviewById[currentQuestion.id].is_correct">✓ Correct</template>
+                <template v-else>
+                  ✗ Correct answer: <span class="markdown-inline" v-html="renderInline(reviewById[currentQuestion.id].correct_answer)"></span>
+                </template>
+              </p>
+              <p v-if="reviewById[currentQuestion.id].explanation" class="mt-0.5 opacity-90 markdown-inline" v-html="renderInline(reviewById[currentQuestion.id].explanation)"></p>
             </div>
           </div>
-        </li>
-      </ol>
+        </div>
 
-      <!-- Actions -->
-      <div v-if="started || result" class="mt-6 flex items-center gap-3">
-        <button
-          v-if="!result"
-          type="button"
-          :disabled="submitting || !allAnswered"
-          class="px-5 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
-          @click="submit"
-        >
-          {{ submitting ? 'Submitting…' : 'Submit answers' }}
-        </button>
-        <template v-else>
+        <!-- Pagination: Back / Next through the bank one question at a time -->
+        <div class="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            :disabled="currentIndex === 0 || nextLoading"
+            class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95"
+            @click="goBack"
+          >
+            Back
+          </button>
+
+          <span class="text-xs text-slate-500 dark:text-slate-400">
+            Question {{ currentIndex + 1 }} of {{ totalCount }}
+          </span>
+
+          <button
+            v-if="!isLastQuestion"
+            type="button"
+            :disabled="nextLoading"
+            class="px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+            @click="goNext"
+          >
+            {{ nextLoading ? 'Loading…' : 'Next' }}
+          </button>
+          <button
+            v-else-if="!result"
+            type="button"
+            :disabled="submitting || !allAnswered"
+            class="px-5 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+            @click="submit"
+          >
+            {{ submitting ? 'Submitting…' : 'Submit answers' }}
+          </button>
+        </div>
+        <p v-if="!result && !allAnswered && isLastQuestion" class="text-xs text-slate-400 text-right">
+          Answer all {{ questions.length }} to submit
+        </p>
+
+        <!-- Result summary + retake, always reachable regardless of the current page -->
+        <div v-if="result" class="flex items-center gap-3">
           <span class="text-xs text-slate-600 dark:text-slate-400">
             {{ result.correct_answers }} / {{ result.total_questions }} correct
             <template v-if="result.xp_awarded"> · +{{ result.xp_awarded }} XP</template>
@@ -253,10 +315,7 @@ watch(
           >
             Retake
           </button>
-        </template>
-        <span v-if="!result && !allAnswered" class="text-xs text-slate-400">
-          Answer all {{ questions.length }} to submit
-        </span>
+        </div>
       </div>
     </template>
   </div>

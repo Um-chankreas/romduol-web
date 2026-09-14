@@ -64,7 +64,7 @@
 
       <!-- Loading State -->
       <div v-if="loading" class="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-        Loading quiz details...
+        {{ loadTotal > 0 ? `Loading ${loadedCount}/${loadTotal} questions…` : 'Loading quiz details...' }}
       </div>
 
       <template v-else>
@@ -187,8 +187,8 @@
             </div>
           </div>
 
-          <div 
-            v-for="(q, qIndex) in quiz.questions" 
+          <div
+            v-for="{ q, index: qIndex } in pagedQuestions"
             :key="q.id"
             class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-4 relative"
           >
@@ -307,6 +307,29 @@
               />
             </div>
           </div>
+
+          <!-- Pagination: Back / Next through the bank, EDITOR_PAGE_SIZE questions at a time -->
+          <div v-if="editorTotalPages > 1" class="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              :disabled="editorPage === 1"
+              class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              @click="goToQuestionPage(editorPage - 1)"
+            >
+              Back
+            </button>
+            <span class="text-xs text-slate-500 dark:text-slate-400">
+              Page {{ editorPage }} of {{ editorTotalPages }} ({{ quiz.questions.length }} questions)
+            </span>
+            <button
+              type="button"
+              :disabled="editorPage === editorTotalPages"
+              class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              @click="goToQuestionPage(editorPage + 1)"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </template>
 
@@ -326,6 +349,10 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+// A big bank is fetched page by page (quizService.fetchAllQuizQuestions) so
+// one slow SELECT * doesn't block this screen — progress for the message above.
+const loadedCount = ref(0)
+const loadTotal = ref(0)
 const saving = ref(false)
 const lastSaved = ref('')
 const errorMessage = ref('')
@@ -359,6 +386,22 @@ const quiz = ref({
 })
 
 const TIERS = ['Easy', 'Medium', 'Hard']
+
+// The whole bank is loaded up front (Save PUTs it back as one array), but
+// shown a page at a time so editing 100+ questions isn't one long scroll.
+// Purely a display slice; add/remove/import still act on the full
+// quiz.value.questions array by its real index.
+const EDITOR_PAGE_SIZE = 10
+const editorPage = ref(1)
+const editorTotalPages = computed(() => Math.max(1, Math.ceil(quiz.value.questions.length / EDITOR_PAGE_SIZE)))
+const pagedQuestions = computed(() => {
+  const start = (editorPage.value - 1) * EDITOR_PAGE_SIZE
+  return quiz.value.questions.slice(start, start + EDITOR_PAGE_SIZE).map((q, i) => ({ q, index: start + i }))
+})
+watch(() => quiz.value.questions.length, () => {
+  if (editorPage.value > editorTotalPages.value) editorPage.value = editorTotalPages.value
+})
+const goToQuestionPage = (p) => { editorPage.value = Math.min(Math.max(p, 1), editorTotalPages.value) }
 
 // quiz_questions.question_type is 'QCM' or 'number_input'. Older rows /
 // CSV exports may carry aliases ('multiple_choice', 'numeric', 'MCQ-4', …) —
@@ -481,6 +524,7 @@ const addQuestion = () => {
     difficulty: 'Medium',
     question_type: 'QCM'
   })
+  editorPage.value = editorTotalPages.value // jump to the page holding the new question
 }
 
 const removeQuestion = (index) => {
@@ -601,11 +645,13 @@ const handleCsvFileChange = async (event) => {
 
     // Replace the single blank starter question instead of leaving it dangling
     const isBlankDefault = quiz.value.questions.length === 1 && !quiz.value.questions[0].question
+    const firstNewIndex = isBlankDefault ? 0 : quiz.value.questions.length
     if (isBlankDefault) {
       quiz.value.questions = imported
     } else {
       quiz.value.questions.push(...imported)
     }
+    editorPage.value = Math.floor(firstNewIndex / EDITOR_PAGE_SIZE) + 1
 
     successMessage.value = `${imported.length} question(s) imported from CSV.`
     setTimeout(() => {
@@ -633,8 +679,19 @@ onMounted(async () => {
   const editId = route.params.quizId || route.params.id
   if (editId) {
     loading.value = true
+    loadedCount.value = 0
+    loadTotal.value = 0
+    editorPage.value = 1
     try {
-      const data = await quizService.getQuizById(editId)
+      // Save PUTs the whole `questions` array back (replacing the bank), so
+      // it must be fully loaded before this screen can be edited/saved —
+      // pull all pages up front, showing progress for a big bank.
+      const data = await quizService.fetchAllQuizQuestions(editId, {
+        onPage: (questionsSoFar, quizMeta) => {
+          loadTotal.value = quizMeta.pagination?.total ?? questionsSoFar.length
+          loadedCount.value = questionsSoFar.length
+        },
+      })
       if (data) {
         quiz.value = {
           ...quiz.value,

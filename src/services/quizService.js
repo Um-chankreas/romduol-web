@@ -20,10 +20,38 @@ export const quizService = {
         return response.data?.data?.quizzes || response.data?.quizzes || response.data
     },
 
-    // Fetch full details for a single quiz (including questions)
-    async getQuizById(quizId) {
-        const response = await api.get(`/quizzes/${quizId}`)
+    // Fetch full details for a single quiz. With no args, returns every
+    // question (small quizzes, students taking it). Pass { page, limit } to
+    // get one page of a teacher's question bank instead — see
+    // fetchAllQuizQuestions() for pulling the whole bank page by page.
+    async getQuizById(quizId, { page, limit } = {}) {
+        const params = page !== undefined ? { page, limit } : undefined
+        const response = await api.get(`/quizzes/${quizId}`, { params })
         return response.data?.data?.quiz || response.data?.quiz || response.data
+    },
+
+    // Loads a teacher's full question bank a page at a time (so the editor
+    // can paint the first page immediately instead of waiting on the whole
+    // bank), invoking onPage(questionsSoFar, quiz) after each page lands.
+    // Resolves with the assembled quiz once every page has arrived — the
+    // editor's save PUTs the whole array back, so it must wait for this
+    // before allowing a save (see UnitQuizEditor.vue).
+    async fetchAllQuizQuestions(quizId, { pageSize = 20, onPage } = {}) {
+        let page = 1
+        let quiz = await this.getQuizById(quizId, { page, limit: pageSize })
+        let questions = [...(quiz.questions || [])]
+        onPage?.(questions, quiz)
+
+        const total = quiz.pagination?.total ?? questions.length
+        while (questions.length < total) {
+            page += 1
+            const next = await this.getQuizById(quizId, { page, limit: pageSize })
+            questions = questions.concat(next.questions || [])
+            onPage?.(questions, quiz)
+            if (!next.questions?.length) break // safety net against an infinite loop
+        }
+
+        return { ...quiz, questions, total_questions: questions.length }
     },
 
     // Create new quiz (Accepts courseId or full payload depending on how it's called)
@@ -47,6 +75,23 @@ export const quizService = {
     // Delete a quiz
     async deleteQuiz(quizId) {
         const response = await api.delete(`/quizzes/${quizId}`)
+        return response.data
+    },
+
+    // Per-question CRUD — lets the editor add/edit/remove one question at a
+    // time instead of resending the whole bank (which is what PUT /quizzes/:id
+    // does when given a `questions` array). See UnitQuizEditor.vue: this is
+    // what makes true on-demand paging of a big bank safe to save from.
+    async addQuizQuestion(quizId, question) {
+        const response = await api.post(`/quizzes/${quizId}/questions`, question)
+        return response.data?.data?.question || response.data?.question
+    },
+    async updateQuizQuestion(quizId, questionId, question) {
+        const response = await api.put(`/quizzes/${quizId}/questions/${questionId}`, question)
+        return response.data?.data?.question || response.data?.question
+    },
+    async deleteQuizQuestion(quizId, questionId) {
+        const response = await api.delete(`/quizzes/${quizId}/questions/${questionId}`)
         return response.data
     },
 

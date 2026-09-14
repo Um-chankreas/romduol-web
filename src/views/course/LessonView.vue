@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
-import UnitsManager from '@/components/units/UnitsManager.vue'
+import UnitEditForm from '@/components/units/UnitEditForm.vue'
 import UnitPractice from '@/components/units/UnitPractice.vue'
 import UnitQuizEditor from '@/components/units/UnitQuizEditor.vue'
+import CurriculumSidebar from '@/components/units/CurriculumSidebar.vue'
+import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 import { unitService } from '@/services/unitService'
 import { lessonService } from '@/services/lessonService'
 import { authService } from '@/services/authService'
@@ -29,7 +31,23 @@ const error = ref(null)
 const selectedId = ref(null)
 const selected = computed(() => units.value.find((u) => u.id === selectedId.value) || null)
 
-const manageMode = ref(false)
+// Ref onto the curriculum sidebar so an inline edit/delete here (below) can
+// tell it its own cached list for this chapter is stale — otherwise the
+// sidebar keeps showing the old title / the deleted unit until a full reload.
+const curriculumSidebarRef = ref(null)
+
+// Teacher-only tabs for the selected unit. A student never sees these — they
+// just read the unit and, below it, take the practice quiz (see UnitPractice).
+const TABS = [
+  { id: 'theory', label: 'Theory Lesson', icon: '📖' },
+  { id: 'quiz', label: 'Quiz Editor', icon: '📝' },
+  { id: 'results', label: 'Student Results', icon: '📊' },
+]
+const activeTab = ref('theory')
+// Inline "Edit" for the currently selected unit's theory content — lets a
+// teacher fix a typo or rewrite a unit right from the reader, without going
+// into Manage units. Uses the same UnitEditForm as that screen.
+const editingContent = ref(false)
 
 const markingComplete = ref(false)
 const completed = ref(false)
@@ -44,7 +62,12 @@ const load = async ({ silent = false } = {}) => {
     chapter.value = res.data?.chapter || null
     courseAccess.value = !!res.data?.course_access
     units.value = res.data?.units || []
-    if (!selectedId.value || !units.value.some((u) => u.id === selectedId.value)) {
+    // A cross-chapter jump from the curriculum sidebar carries ?unit=<id> so
+    // landing here selects that specific unit instead of defaulting to the first.
+    const requested = typeof route.query.unit === 'string' ? route.query.unit : null
+    if (requested && units.value.some((u) => u.id === requested)) {
+      selectedId.value = requested
+    } else if (!selectedId.value || !units.value.some((u) => u.id === selectedId.value)) {
       selectedId.value = units.value[0]?.id || null
     }
   } catch (err) {
@@ -56,6 +79,8 @@ const load = async ({ silent = false } = {}) => {
 
 const selectUnit = async (u) => {
   selectedId.value = u.id
+  activeTab.value = 'theory'
+  editingContent.value = false
   // The list response already carries `content` for unlocked units; only
   // fetch the single unit if we somehow don't have it yet.
   if (u.content == null && !u.locked) {
@@ -68,6 +93,76 @@ const selectUnit = async (u) => {
       }
     } catch { /* leave the preview showing */ }
   }
+}
+
+// The inline theory-content editor saved — patch the unit in place (no full
+// reload needed) and drop back to reading it.
+const onContentSaved = (updatedUnit) => {
+  if (updatedUnit) {
+    const i = units.value.findIndex((x) => x.id === updatedUnit.id)
+    if (i !== -1) units.value[i] = { ...units.value[i], ...updatedUnit }
+  }
+  editingContent.value = false
+  curriculumSidebarRef.value?.refreshChapter(lessonId.value)
+}
+
+// Delete right from the page — no detour through a separate "manage" mode.
+const deletingUnit = ref(false)
+const showDeleteUnitModal = ref(false)
+const deleteUnitError = ref('')
+const askDeleteUnit = () => {
+  if (!selected.value) return
+  deleteUnitError.value = ''
+  showDeleteUnitModal.value = true
+}
+const closeDeleteUnitModal = () => {
+  if (deletingUnit.value) return
+  showDeleteUnitModal.value = false
+}
+const confirmDeleteUnit = async () => {
+  deletingUnit.value = true
+  deleteUnitError.value = ''
+  try {
+    await unitService.deleteUnit(selected.value.id)
+    selectedId.value = null
+    showDeleteUnitModal.value = false
+    await load({ silent: true })
+    curriculumSidebarRef.value?.refreshChapter(lessonId.value)
+  } catch (err) {
+    deleteUnitError.value = err.response?.data?.error || err.message || 'Failed to delete unit'
+  } finally {
+    deletingUnit.value = false
+  }
+}
+
+// A unit picked in the curriculum sidebar that belongs to a DIFFERENT
+// chapter than the one open here — navigate there and pass which unit to
+// land on (see the `requested` handling in load()).
+const goToChapter = ({ chapterId, unitId }) => {
+  router.push({ path: `/lessons/${chapterId}`, query: unitId ? { unit: unitId } : {} })
+}
+
+// A unit added inline from the curriculum sidebar (see CurriculumSidebar's
+// "+ Add Unit") — if it landed in the chapter open here, refresh this
+// page's own unit list and jump straight to the new unit.
+const onUnitAdded = ({ chapterId, unit }) => {
+  if (chapterId !== lessonId.value) return
+  if (unit) selectedId.value = unit.id
+  load({ silent: true })
+}
+
+// The sidebar's units changed structurally (reorder, bulk import) — refresh
+// this page's own list if it's the chapter currently open, without
+// disturbing which unit is selected.
+const onCurriculumChange = ({ chapterId }) => {
+  if (chapterId !== lessonId.value) return
+  load({ silent: true })
+}
+
+// A whole new chapter was created from the "+ Add Chapter" button in the
+// sidebar — jump straight there instead of leaving it buried in the list.
+const onChapterAdded = ({ chapter }) => {
+  if (chapter?.id) router.push({ path: `/lessons/${chapter.id}` })
 }
 
 const markComplete = async () => {
@@ -87,6 +182,20 @@ const goBack = () => {
   else router.push('/')
 }
 
+// "Last edited: 5 mins ago" for the selected unit — the closest real
+// timestamp we have to a per-unit edit history.
+const lastEditedLabel = computed(() => {
+  const ts = selected.value?.updated_at
+  if (!ts) return null
+  const minutes = Math.floor((Date.now() - new Date(ts).getTime()) / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+})
+
 watch(lessonId, () => {
   selectedId.value = null
   load()
@@ -99,33 +208,20 @@ onMounted(load)
     <Sidebar class="hidden md:flex shrink-0 h-full" />
 
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-      <Header class="shrink-0" />
+      <Header class="shrink-0">
+        <template #left>
+          <nav class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+            <button type="button" @click="goBack" class="font-bold hover:underline">My Classes</button>
+            <span>/</span>
+            <span class="font-semibold text-slate-600 dark:text-slate-300">{{ chapter?.course?.title || 'Course' }}</span>
+            <span>/</span>
+            <span class="font-semibold text-slate-800 dark:text-slate-100">{{ chapter?.title || 'Chapter' }}</span>
+          </nav>
+        </template>
+      </Header>
 
       <main class="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8">
         <div class="w-full max-w-6xl mx-auto flex flex-col gap-6">
-          <div class="flex items-center justify-between">
-            <button
-              @click="goBack"
-              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200/80 dark:border-slate-800 transition active:scale-95"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </button>
-
-            <button
-              v-if="isTeacher && courseAccess"
-              @click="manageMode = !manageMode"
-              class="px-4 py-2 rounded-xl text-xs font-bold border transition active:scale-95"
-              :class="manageMode
-                ? 'bg-[#033B26] text-white border-[#033B26]'
-                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'"
-            >
-              {{ manageMode ? 'Done managing' : 'Manage units' }}
-            </button>
-          </div>
-
           <div v-if="loading" class="text-center py-20 text-slate-500 dark:text-slate-400 font-medium">
             Loading chapter…
           </div>
@@ -141,81 +237,126 @@ onMounted(load)
               </h1>
             </div>
 
-            <!-- Teacher management -->
-            <div
-              v-if="manageMode"
-              class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"
-            >
-              <UnitsManager :lesson-id="lessonId" @change="load({ silent: true })" />
-            </div>
-
-            <!-- Reader -->
-            <div v-else class="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
-              <!-- Unit list -->
-              <aside class="lg:sticky lg:top-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-2">
-                <p v-if="units.length === 0" class="p-3 text-xs text-slate-500 italic">
-                  No units in this chapter yet.
-                </p>
-                <ul class="space-y-0.5">
-                  <li v-for="u in units" :key="u.id">
-                    <button
-                      type="button"
-                      @click="selectUnit(u)"
-                      class="w-full text-left px-3 py-2 rounded-lg text-[13px] leading-snug transition flex items-start gap-2"
-                      :class="selectedId === u.id
-                        ? 'bg-emerald-50 dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 font-semibold'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'"
-                    >
-                      <span class="text-slate-400 shrink-0">{{ u.order_number }}.</span>
-                      <span class="flex-1 min-w-0">{{ u.title }}</span>
-                      <span v-if="u.locked" class="shrink-0" title="Locked">🔒</span>
-                    </button>
-                  </li>
-                </ul>
-              </aside>
+            <!-- Reader / editor -->
+            <div class="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
+              <CurriculumSidebar
+                ref="curriculumSidebarRef"
+                :course-id="chapter?.course?.id"
+                :active-chapter-id="lessonId"
+                :active-unit-id="selectedId"
+                :is-teacher="isTeacher"
+                @select-unit="selectUnit"
+                @navigate-chapter="goToChapter"
+                @unit-added="onUnitAdded"
+                @change="onCurriculumChange"
+              />
 
               <!-- Selected unit -->
               <article class="min-w-0 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8">
                 <template v-if="selected">
-                  <h2 class="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">{{ selected.title }}</h2>
-
-                  <MarkdownContent v-if="selected.content != null" :source="selected.content" />
-
-                  <div v-if="selected.content == null" class="space-y-4">
-                    <p class="text-sm text-slate-600 dark:text-slate-400">{{ selected.preview }}…</p>
-                    <div class="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-                      🔒 Enrol in this course to read the full unit.
+                  <!-- Tabs: teacher only. A student has nothing to switch between —
+                       just the reader, with the practice quiz below it. -->
+                  <div
+                    v-if="isTeacher && courseAccess"
+                    class="flex items-center justify-between gap-3 flex-wrap mb-6 pb-3 border-b border-slate-100 dark:border-slate-800"
+                  >
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        v-for="t in TABS"
+                        :key="t.id"
+                        type="button"
+                        class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition"
+                        :class="activeTab === t.id
+                          ? 'bg-[#033B26] text-white'
+                          : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                        @click="activeTab = t.id"
+                      >
+                        <span>{{ t.icon }}</span> {{ t.label }}
+                      </button>
                     </div>
+                    <span v-if="lastEditedLabel && activeTab === 'theory'" class="flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap">
+                      🕐 Last edited: {{ lastEditedLabel }}
+                    </span>
                   </div>
 
-                  <!-- Unit practice quiz — students take it, teachers manage it -->
-                  <div
-                    v-if="selected.content != null && courseAccess"
-                    class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800"
-                  >
+                  <div class="flex items-center justify-between gap-3 mb-4">
+                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-200">{{ selected.title }}</h2>
+                    <span v-if="isTeacher && courseAccess && activeTab === 'theory' && !editingContent" class="shrink-0 flex items-center gap-3">
+                      <button
+                        type="button"
+                        class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+                        @click="editingContent = true"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        class="text-xs font-bold text-red-600 hover:underline"
+                        @click="askDeleteUnit"
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+
+                  <!-- Inline theory-content editor — skips Manage units for the
+                       common case of just fixing/rewriting this one unit. -->
+                  <template v-if="isTeacher && courseAccess && activeTab === 'theory' && editingContent">
+                    <UnitEditForm
+                      :lesson-id="lessonId"
+                      :unit="selected"
+                      @saved="onContentSaved"
+                      @cancel="editingContent = false"
+                    />
+                  </template>
+
+                  <template v-else-if="!isTeacher || !courseAccess || activeTab === 'theory'">
+                    <MarkdownContent v-if="selected.content != null" :source="selected.content" />
+
+                    <div v-if="selected.content == null" class="space-y-4">
+                      <p class="text-sm text-slate-600 dark:text-slate-400">{{ selected.preview }}…</p>
+                      <div class="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                        🔒 Enrol in this course to read the full unit.
+                      </div>
+                    </div>
+
+                    <!-- Unit practice quiz — students take it here -->
+                    <div
+                      v-if="!isTeacher && selected.content != null && courseAccess"
+                      class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800"
+                    >
+                      <UnitPractice :key="selected.id" :unit-id="selected.id" />
+                    </div>
+
+                    <div
+                      v-if="courseAccess && !isTeacher && units.length > 0"
+                      class="mt-8 pt-5 border-t border-slate-100 dark:border-slate-800"
+                    >
+                      <button
+                        :disabled="markingComplete || completed"
+                        @click="markComplete"
+                        class="px-5 py-2.5 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+                      >
+                        {{ completed ? '✓ Chapter completed' : markingComplete ? 'Saving…' : 'Mark chapter complete' }}
+                      </button>
+                    </div>
+                  </template>
+
+                  <template v-else-if="activeTab === 'quiz'">
                     <UnitQuizEditor
-                      v-if="isTeacher"
                       :key="'m-' + selected.id"
                       :unit-id="selected.id"
                       :unit-title="selected.title"
                       :course-id="chapter?.course?.id"
                       :lesson-id="lessonId"
                     />
-                    <UnitPractice v-else :key="selected.id" :unit-id="selected.id" />
-                  </div>
+                  </template>
 
-                  <div
-                    v-if="courseAccess && !isTeacher && units.length > 0"
-                    class="mt-8 pt-5 border-t border-slate-100 dark:border-slate-800"
-                  >
-                    <button
-                      :disabled="markingComplete || completed"
-                      @click="markComplete"
-                      class="px-5 py-2.5 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
-                    >
-                      {{ completed ? '✓ Chapter completed' : markingComplete ? 'Saving…' : 'Mark chapter complete' }}
-                    </button>
-                  </div>
+                  <template v-else-if="activeTab === 'results'">
+                    <div class="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                      Per-student results for this quiz aren't available yet — this tab is a placeholder for now.
+                    </div>
+                  </template>
                 </template>
                 <p v-else class="text-sm text-slate-500 italic">Select a unit to start reading.</p>
               </article>
@@ -224,5 +365,16 @@ onMounted(load)
         </div>
       </main>
     </div>
+
+    <ConfirmModal
+      v-if="showDeleteUnitModal"
+      title="Delete this unit?"
+      :message="`This will permanently delete '${selected?.title}' and its content. This action cannot be undone.`"
+      confirm-label="Delete Unit"
+      :loading="deletingUnit"
+      :error="deleteUnitError"
+      @close="closeDeleteUnitModal"
+      @confirm="confirmDeleteUnit"
+    />
   </div>
 </template>

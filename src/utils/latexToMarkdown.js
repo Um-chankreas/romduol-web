@@ -23,13 +23,19 @@ export function isLatexDocument(src) {
 
 // Pull every $…$ / $$…$$ span out to an opaque token so the prose-level
 // cleanup can't touch the maths. Restored right before returning.
+//
+// The Khmer `\kh` font switch (see cleanInline()) can land inside math too —
+// e.g. `\text{\kh បើ}` in a `cases` block — but cleanInline() never sees
+// stashed math, so it's stripped here as well; KaTeX doesn't know `\kh` and
+// would otherwise render it mangled into the adjacent Khmer text.
+const stripKhmerFontSwitch = (x) => x.replace(/\\(?:kh|khmerfont)\b\s*/g, '')
 function stashMath(s, store) {
   return s
     // Display math kept on ONE line — the mobile reader renders content
     // line-by-line, so a `$$…\n…$$` block would be torn apart. `\\` stays as
     // the row separator inside aligned/gathered.
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_, x) => tok(store, `$$${x.replace(/\s*\n\s*/g, ' ').trim()}$$`))
-    .replace(/\$([^$\n]+?)\$/g, (_, x) => tok(store, `$${x.trim()}$`))
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, x) => tok(store, `$$${stripKhmerFontSwitch(x.replace(/\s*\n\s*/g, ' ').trim())}$$`))
+    .replace(/\$([^$\n]+?)\$/g, (_, x) => tok(store, `$${stripKhmerFontSwitch(x.trim())}$`))
 }
 function tok(store, value) {
   store.push(value)
@@ -243,7 +249,7 @@ export function latexToMarkdown(input) {
   // + the original source (base64, single line) so that async pass can turn
   // it into `![…](data:image/svg+xml;…)`. `\includegraphics` has no source to
   // render, so it stays a one-line `figure` placeholder the teacher fills in
-  // by uploading an image (see UnitsManager.vue). `figure` / `wrapfigure`
+  // by uploading an image (see UnitEditForm.vue). `figure` / `wrapfigure`
   // wrappers and a `\caption{…}` are unwrapped to a caption line above.
   s = s.replace(
     /\\begin\s*\{(figure|wrapfigure|figure\*)\}\s*(?:\[[^\]]*\]|\{[^{}]*\})*([\s\S]*?)\\end\s*\{\1\}/g,
@@ -274,17 +280,24 @@ export function latexToMarkdown(input) {
   const listRe = /\\begin\s*\{(itemize|enumerate|description)\}([\s\S]*?)\\end\s*\{\1\}/g
   // column spec can nest one level of braces, e.g. {p{6cm} p{4cm}} or {@{}l l@{}}
   const tabRe = /\\begin\s*\{(tabular\*?|tabularx|array|longtable)\}\s*(?:\{(?:[^{}]|\{[^{}]*\})*\}|\[[^\]]*\])+([\s\S]*?)\\end\s*\{\1\}/g
+  const centerRe = /\\begin\s*\{center\}([\s\S]*?)\\end\s*\{center\}/g
+  // `center` is unwrapped in the SAME loop as list/table conversion (not
+  // after) — a `center` can sit inside a `tcolorbox`/`mdframed` (or vice
+  // versa), and cleanInline()'s "unknown command" fallback would otherwise
+  // read a still-literal `\begin{center}` as command `begin` with argument
+  // `center`, printing the literal word "center" into the output.
   for (let i = 0; i < 5; i++) {
     const before = s
     s = s
       .replace(listRe, (_, env, b) => listify(env, b))
       .replace(tabRe, (_, env, b) => tabularToBlock(b))
+      .replace(centerRe, (_, b) => `\n\n${b.trim()}\n\n`)
     if (s === before) break
   }
 
   s = s.replace(/\\begin\s*\{(tcolorbox|mdframed|framed|quote|quotation|shadowbox)\}\s*(?:\[[^\]]*\])?([\s\S]*?)\\end\s*\{\1\}/g,
     (_, env, b) => blockquotify(b, math))
-  s = s.replace(/\\begin\s*\{center\}([\s\S]*?)\\end\s*\{center\}/g, (_, b) => `\n\n${b.trim()}\n\n`)
+  s = s.replace(centerRe, (_, b) => `\n\n${b.trim()}\n\n`)
 
   // Any environment still left → keep its text, warn once.
   s = s.replace(/\\begin\s*\{([a-zA-Z*]+)\}\s*(?:\[[^\]]*\])?([\s\S]*?)\\end\s*\{\1\}/g, (_, env, b) => {
@@ -292,11 +305,17 @@ export function latexToMarkdown(input) {
     return `\n\n${b.trim()}\n\n`
   })
 
-  // 6. Sectioning → headings (`## ` also starts a new unit on save).
+  // 6. Sectioning → headings, one level DEEPER than you'd expect (section
+  //    → ###, not ##). `## ` is reserved as the unit-splitting marker for
+  //    bulk import (see units.routes.js) — a teacher's .tex file is always
+  //    one document → one unit, however many \section's it has inside it,
+  //    so nothing this converter produces may ever land on `## `. Plain
+  //    Markdown pasted directly (not run through this converter) still uses
+  //    `## Unit 1: …` / `## Unit 2: …` to deliberately split into units.
   s = s
-    .replace(/\\section\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n## ${x.trim()}\n\n`)
-    .replace(/\\subsection\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n### ${x.trim()}\n\n`)
-    .replace(/\\(?:subsubsection|paragraph)\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n#### ${x.trim()}\n\n`)
+    .replace(/\\section\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n### ${x.trim()}\n\n`)
+    .replace(/\\subsection\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n#### ${x.trim()}\n\n`)
+    .replace(/\\(?:subsubsection|paragraph)\s*\*?\s*\{([^{}]*)\}/g, (_, x) => `\n\n##### ${x.trim()}\n\n`)
 
   // 7. Everything else.
   s = cleanInline(s)

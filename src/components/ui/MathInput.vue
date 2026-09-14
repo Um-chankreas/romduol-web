@@ -5,21 +5,24 @@
         v-if="multiline"
         ref="inputRef"
         :value="modelValue"
+        :disabled="disabled"
         @input="$emit('update:modelValue', $event.target.value)"
         :rows="rows"
         :placeholder="placeholder"
-        :class="[inputClass, 'pr-9']"
+        :class="[inputClass, 'pr-9', disabled && 'opacity-70 cursor-not-allowed']"
       ></textarea>
       <input
         v-else
         ref="inputRef"
         :value="modelValue"
+        :disabled="disabled"
         @input="$emit('update:modelValue', $event.target.value)"
         type="text"
         :placeholder="placeholder"
-        :class="[inputClass, 'pr-9']"
+        :class="[inputClass, 'pr-9', disabled && 'opacity-70 cursor-not-allowed']"
       />
       <button
+        v-if="!disabled"
         type="button"
         @click="toolbarOpen = !toolbarOpen"
         title="Insert math symbol"
@@ -76,7 +79,8 @@ const props = defineProps({
   placeholder: { type: String, default: '' },
   inputClass: { type: String, default: '' },
   multiline: { type: Boolean, default: false },
-  rows: { type: [Number, String], default: 2 }
+  rows: { type: [Number, String], default: 2 },
+  disabled: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -137,4 +141,19 @@ const applyInsert = (build) => {
     }
   })
 }
+
+// Exposed so a parent can drive this from its own toolbar buttons (e.g. a
+// "√" / "fx" pair sitting in a label row above the field) instead of only
+// the built-in "∑" toggle.
+defineExpose({
+  openToolbar: () => { toolbarOpen.value = true },
+  toggleToolbar: () => { toolbarOpen.value = !toolbarOpen.value },
+  insertSqrt: () => applyInsert(buildSqrt),
+  // Lets a parent jump the user straight into a freshly-added field — e.g.
+  // scroll a brand-new question into view and focus its prompt right away.
+  focus: () => {
+    inputRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    inputRef.value?.focus()
+  },
+})
 </script>

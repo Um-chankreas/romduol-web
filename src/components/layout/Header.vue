@@ -103,8 +103,12 @@ const handleSaveProfile = async (data) => {
 </script>
 
 <template>
-  <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-end border-b border-slate-200/80 dark:border-slate-800 bg-[#f8fafd] dark:bg-slate-900 transition-colors">
-    <div class="flex items-center gap-3.5">
+  <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-[#f8fafd] dark:bg-slate-900 transition-colors">
+    <div class="min-w-0 flex-1">
+      <slot name="left" />
+    </div>
+
+    <div class="flex items-center gap-3.5 shrink-0">
       <button
         @click="toggleTheme"
         type="button"
