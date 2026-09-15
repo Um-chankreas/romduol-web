@@ -3,7 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { quizService } from '@/services/quizService'
 import MathInput from '@/components/ui/MathInput.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
-import { normalizeMath, autoWrapLatex } from '@/utils/markdown'
+import { normalizeMath, autoWrapLatex, toPlainPreview } from '@/utils/markdown'
 
 const props = defineProps({
   unitId: { type: String, required: true },
@@ -127,6 +127,7 @@ const load = async () => {
   originalById.clear()
   lastSavedAt.value = null
   error.value = null
+  clearSearch()
   try {
     const existing = (await quizService.getUnitQuizzes(props.unitId)) || []
     const found = existing[0]
@@ -195,6 +196,50 @@ const goToPage = async (target) => {
 }
 const goBack = () => goToPage(editorPage.value - 1)
 const goNext = () => goToPage(editorPage.value + 1)
+
+// ── Search the question bank ────────────────────────────────────────────
+// Searches the server (not just what's loaded locally — the whole point on a
+// 150-question bank) by prompt text, then jumps to whichever page the picked
+// match lives on. Assumes order_number is a dense 1..N sequence (true for
+// anything created/imported/reordered normally), so page = ceil(n / size).
+const searchQuery = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+const highlightId = ref(null)
+let searchTimer = null
+
+watch(searchQuery, (val) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const term = val.trim()
+  if (!term || !quiz.value.id) { searchResults.value = []; searching.value = false; return }
+  searching.value = true
+  searchTimer = setTimeout(async () => {
+    try {
+      searchResults.value = await quizService.searchQuizQuestions(quiz.value.id, term)
+    } catch {
+      searchResults.value = []
+    } finally {
+      searching.value = false
+    }
+  }, 350)
+})
+
+const clearSearch = () => {
+  if (searchTimer) { clearTimeout(searchTimer); searchTimer = null }
+  searchQuery.value = ''
+  searchResults.value = []
+  searching.value = false
+}
+
+const jumpToMatch = async (match) => {
+  const targetPage = Math.max(1, Math.ceil((match.order_number || 1) / EDITOR_PAGE_SIZE))
+  clearSearch()
+  await goToPage(targetPage)
+  highlightId.value = match.id
+  await nextTick()
+  document.getElementById(`q-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  setTimeout(() => { if (highlightId.value === match.id) highlightId.value = null }, 2500)
+}
 
 // Autosave: a teacher who edits then hits Back or closes the tab without
 // clicking Save shouldn't lose the edit. Every real edit (see the template's
@@ -378,7 +423,10 @@ watch(addMenuOpen, (open) => {
   if (open) document.addEventListener('click', closeAddMenuOnOutsideClick)
   else document.removeEventListener('click', closeAddMenuOnOutsideClick)
 })
-onBeforeUnmount(() => document.removeEventListener('click', closeAddMenuOnOutsideClick))
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeAddMenuOnOutsideClick)
+  if (searchTimer) clearTimeout(searchTimer)
+})
 const chooseAddMenu = (action) => {
   addMenuOpen.value = false
   if (action === 'question') addQuestion()
@@ -514,6 +562,50 @@ const optionFieldCls =
         </div>
       </div>
 
+      <!-- Search the bank by prompt text — a debounced server search (not
+           just what's loaded locally), jump-to-result loads whatever page
+           the match lives on. -->
+      <div v-if="quiz.id" class="relative">
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search questions by text…"
+            class="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#033B26] dark:focus:border-emerald-500"
+          />
+          <button
+            v-if="searchQuery"
+            type="button"
+            title="Clear search"
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
+            @click="clearSearch"
+          >✕</button>
+        </div>
+
+        <div
+          v-if="searchQuery.trim()"
+          class="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg max-h-80 overflow-y-auto z-20"
+        >
+          <p v-if="searching" class="px-3.5 py-3 text-xs text-slate-400">Searching…</p>
+          <p v-else-if="searchResults.length === 0" class="px-3.5 py-3 text-xs text-slate-400">No matching questions.</p>
+          <template v-else>
+            <button
+              v-for="m in searchResults"
+              :key="m.id"
+              type="button"
+              class="w-full flex items-start gap-2.5 text-left px-3.5 py-2.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition border-b border-slate-100 dark:border-slate-800 last:border-0"
+              @click="jumpToMatch(m)"
+            >
+              <span class="shrink-0 font-bold text-slate-400 mt-0.5">Q{{ m.order_number }}</span>
+              <span class="text-slate-700 dark:text-slate-300 line-clamp-2">{{ toPlainPreview(m.question, 120) }}</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
       <!-- Navigator: Prev / jump-to pills (centered on the current page) /
            Next, plus the add/import actions on the same row. Jumping to a
            page fetches any pages in between on demand (see goToPage()). -->
@@ -585,8 +677,12 @@ const optionFieldCls =
            still act on the full quiz.questions array by its real index. -->
       <div
         v-for="{ q, index } in pagedQuestions"
+        :id="`q-${q.id}`"
         :key="q.id"
-        class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4"
+        class="rounded-2xl border bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 transition-colors duration-500"
+        :class="highlightId === q.id
+          ? 'border-amber-400 dark:border-amber-500 ring-2 ring-amber-300/60 dark:ring-amber-500/40'
+          : 'border-slate-200 dark:border-slate-800'"
       >
         <div class="flex items-center gap-2 flex-wrap">
           <span class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">

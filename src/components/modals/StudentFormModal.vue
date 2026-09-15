@@ -127,7 +127,13 @@ watch(
 const canSubmit = computed(() => {
   if (!name.value.trim()) return false
   if (!email.value.trim() && !phone.value.trim()) return false
-  if (!isEdit.value && password.value.trim().length < 6) return false
+  const pw = password.value.trim()
+  // Create: password required, >= 6 chars. Edit: optional (blank = keep
+  // current), but a non-empty one still has to clear the 6-char minimum —
+  // the backend rejects a shorter one either way, so the button shouldn't
+  // look submittable when it isn't.
+  if (!isEdit.value && pw.length < 6) return false
+  if (isEdit.value && pw.length > 0 && pw.length < 6) return false
   return true
 })
 
@@ -141,7 +147,12 @@ const submit = () => {
     localError.value = 'Enter an email or a phone number.'
     return
   }
-  if (!isEdit.value && password.value.trim().length < 6) {
+  const pwTrimmed = password.value.trim()
+  if (!isEdit.value && pwTrimmed.length < 6) {
+    localError.value = 'Password must be at least 6 characters.'
+    return
+  }
+  if (isEdit.value && pwTrimmed.length > 0 && pwTrimmed.length < 6) {
     localError.value = 'Password must be at least 6 characters.'
     return
   }
@@ -152,7 +163,7 @@ const submit = () => {
   const phoneVal = phone.value.trim()
   if (!isEdit.value || emailVal !== (props.student.email || '')) payload.email = emailVal || null
   if (!isEdit.value || phoneVal !== (props.student.phone || '')) payload.phone = phoneVal || null
-  if (password.value.trim()) payload.password = password.value.trim()
+  if (pwTrimmed) payload.password = pwTrimmed
 
   emit('submit', isEdit.value ? { id: props.student.id, ...payload } : payload)
 }

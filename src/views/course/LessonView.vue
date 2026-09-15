@@ -249,6 +249,7 @@ onMounted(load)
                 @navigate-chapter="goToChapter"
                 @unit-added="onUnitAdded"
                 @change="onCurriculumChange"
+                @chapter-added="onChapterAdded"
               />
 
               <!-- Selected unit -->

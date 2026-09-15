@@ -24,10 +24,18 @@ export const quizService = {
     // question (small quizzes, students taking it). Pass { page, limit } to
     // get one page of a teacher's question bank instead — see
     // fetchAllQuizQuestions() for pulling the whole bank page by page.
-    async getQuizById(quizId, { page, limit } = {}) {
-        const params = page !== undefined ? { page, limit } : undefined
+    async getQuizById(quizId, { page, limit, q } = {}) {
+        const params = page !== undefined ? { page, limit, ...(q ? { q } : {}) } : undefined
         const response = await api.get(`/quizzes/${quizId}`, { params })
         return response.data?.data?.quiz || response.data?.quiz || response.data
+    },
+
+    // Search a teacher's question bank by prompt text. Returns every match
+    // (capped server-side) with its order_number, so the caller can work out
+    // which page each one lives on and jump there.
+    async searchQuizQuestions(quizId, q) {
+        const quiz = await this.getQuizById(quizId, { page: 1, limit: 1, q })
+        return quiz.questions || []
     },
 
     // Loads a teacher's full question bank a page at a time (so the editor
