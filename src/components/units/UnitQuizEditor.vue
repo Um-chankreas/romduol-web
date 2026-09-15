@@ -208,20 +208,23 @@ const searching = ref(false)
 const highlightId = ref(null)
 let searchTimer = null
 
+const runSearch = async (term) => {
+  searching.value = true
+  try {
+    searchResults.value = await quizService.searchQuizQuestions(quiz.value.id, term)
+  } catch {
+    searchResults.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
 watch(searchQuery, (val) => {
   if (searchTimer) clearTimeout(searchTimer)
   const term = val.trim()
   if (!term || !quiz.value.id) { searchResults.value = []; searching.value = false; return }
   searching.value = true
-  searchTimer = setTimeout(async () => {
-    try {
-      searchResults.value = await quizService.searchQuizQuestions(quiz.value.id, term)
-    } catch {
-      searchResults.value = []
-    } finally {
-      searching.value = false
-    }
-  }, 350)
+  searchTimer = setTimeout(() => runSearch(term), 350)
 })
 
 const clearSearch = () => {
@@ -229,6 +232,17 @@ const clearSearch = () => {
   searchQuery.value = ''
   searchResults.value = []
   searching.value = false
+}
+
+// Enter jumps straight to the best (first) match — runs the search
+// immediately rather than waiting out the debounce if the teacher hits
+// Enter before it's fired (e.g. right after pasting a search term).
+const onSearchEnter = async () => {
+  const term = searchQuery.value.trim()
+  if (!term || !quiz.value.id) return
+  if (searchTimer) { clearTimeout(searchTimer); searchTimer = null }
+  await runSearch(term)
+  if (searchResults.value.length > 0) jumpToMatch(searchResults.value[0])
 }
 
 const jumpToMatch = async (match) => {
@@ -573,8 +587,10 @@ const optionFieldCls =
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search questions by text…"
+            placeholder="Search questions by text or LaTeX…"
             class="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#033B26] dark:focus:border-emerald-500"
+            @keydown.enter.prevent="onSearchEnter"
+            @keydown.esc="clearSearch"
           />
           <button
             v-if="searchQuery"
