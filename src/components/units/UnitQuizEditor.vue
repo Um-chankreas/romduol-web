@@ -3,7 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { quizService } from '@/services/quizService'
 import MathInput from '@/components/ui/MathInput.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
-import { normalizeMath, autoWrapLatex, toPlainPreview } from '@/utils/markdown'
+import { normalizeMath, autoWrapLatex, renderInline } from '@/utils/markdown'
 
 const props = defineProps({
   unitId: { type: String, required: true },
@@ -226,6 +226,18 @@ watch(searchQuery, (val) => {
   searching.value = true
   searchTimer = setTimeout(() => runSearch(term), 350)
 })
+
+// A search-result snippet: trims to length WITHOUT stripping the math (a
+// CSV-generated bank commonly reuses one prompt template with only the
+// formula differing per row — toPlainPreview() strips $…$ entirely, which
+// made every row in the dropdown show identical text). Truncating the raw
+// source before rendering can occasionally cut a math span mid-formula;
+// renderInline()'s KaTeX call just falls back to showing that fragment as
+// plain text rather than throwing, so worst case is a slightly odd tail.
+const searchSnippet = (text, max = 100) => {
+  const t = String(text || '').trim()
+  return renderInline(t.length > max ? t.slice(0, max).trimEnd() + '…' : t)
+}
 
 const clearSearch = () => {
   if (searchTimer) { clearTimeout(searchTimer); searchTimer = null }
@@ -616,7 +628,7 @@ const optionFieldCls =
               @click="jumpToMatch(m)"
             >
               <span class="shrink-0 font-bold text-slate-400 mt-0.5">Q{{ m.order_number }}</span>
-              <span class="text-slate-700 dark:text-slate-300 line-clamp-2">{{ toPlainPreview(m.question, 120) }}</span>
+              <span class="text-slate-700 dark:text-slate-300 line-clamp-2 search-snippet" v-html="searchSnippet(m.question)"></span>
             </button>
           </template>
         </div>
@@ -829,3 +841,10 @@ const optionFieldCls =
     />
   </div>
 </template>
+
+<style>
+/* v-html content (search-result snippets) — keep inline math sized to match
+   the surrounding text instead of KaTeX's default, slightly larger metrics. */
+.search-snippet .katex { font-size: 1em; }
+.search-snippet p { display: inline; margin: 0; }
+</style>
