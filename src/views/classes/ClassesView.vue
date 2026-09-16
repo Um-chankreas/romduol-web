@@ -10,6 +10,7 @@ import { liveClassService } from '../../services/liveClassService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
+import Breadcrumb from '../../components/layout/Breadcrumb.vue';
 import ClassCard from '../../components/classes/ClassCard.vue';
 import ConfirmModal from '../../components/modals/ConfirmModal.vue';
 import CreateClassModal from '../../components/modals/CreateClassModal.vue';
@@ -300,11 +301,15 @@ const handleJoinClass = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-[#f8fafd] dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
     <div class="flex-1 flex flex-col min-w-0">
-      <Header />
+      <Header>
+        <template #left>
+          <Breadcrumb :items="[{ label: 'My Classes' }]" />
+        </template>
+      </Header>
 
       <main class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full">
         <!-- LEFT -->
@@ -373,7 +378,7 @@ const handleJoinClass = async () => {
             <!-- Create -->
             <button
               @click="openCreateModal"
-              class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer"
+              class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer"
             >
               <span class="text-sm font-normal">+</span>
               Create Class
@@ -388,7 +393,7 @@ const handleJoinClass = async () => {
 
             <div class="space-y-3">
               <div class="p-3.5 rounded-2xl bg-emerald-50 dark:bg-slate-800/60 flex items-center gap-3 border border-emerald-100 dark:border-transparent">
-                <div class="bg-[#034d31] text-white px-2.5 py-1.5 rounded-xl text-center shrink-0">
+                <div class="bg-[#006A3A] text-white px-2.5 py-1.5 rounded-xl text-center shrink-0">
                   <span class="block text-[10px] font-bold uppercase text-emerald-200">OCT</span>
                   <span class="block text-sm font-extrabold leading-none">12</span>
                 </div>
@@ -462,7 +467,7 @@ const handleJoinClass = async () => {
           <button
             @click="handleJoinClass"
             :disabled="joiningClass"
-            class="px-5 py-2.5 rounded-xl bg-[#034d31] text-white font-semibold text-sm hover:bg-[#023824] disabled:opacity-50"
+            class="px-5 py-2.5 rounded-xl bg-[#006A3A] text-white font-semibold text-sm hover:bg-[#005A31] disabled:opacity-50"
           >
             {{ joiningClass ? 'Joining...' : 'Join Class' }}
           </button>

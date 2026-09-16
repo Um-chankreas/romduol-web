@@ -3,7 +3,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
     @click.self="$emit('close')"
   >
-    <div class="w-full max-w-xl rounded-[32px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all">
+    <div class="w-full max-w-xl rounded-[32px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all">
       <h2 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white mb-5 text-left">
         Customize appearance
       </h2>
@@ -77,7 +77,7 @@
 import { ref, watch } from 'vue'
 
 const props = defineProps({
-  initialColor: { type: String, default: '#033B26' },
+  initialColor: { type: String, default: '#006A3A' },
   initialCover: { type: String, default: null },
   saving: Boolean,
   error: String

@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-64 shrink-0 border-r border-slate-200/80 dark:border-slate-800 bg-[#f8fafd] dark:bg-slate-900 flex flex-col justify-between p-5 min-h-screen transition-colors">
+  <aside class="w-64 shrink-0 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between p-5 min-h-screen transition-colors">
     <div>
       <!-- BRAND LOGO & NAME -->
       <div class="flex items-center gap-3 mb-8 px-2">
@@ -28,7 +28,7 @@
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
             route.path === '/dashboard'
-              ? 'bg-[#034d31] text-white shadow-sm'
+              ? 'bg-[#006A3A] text-white shadow-sm'
               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
           ]"
         >
@@ -38,8 +38,8 @@
           to="/"
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
-            route.path === '/'
-              ? 'bg-[#034d31] text-white shadow-sm'
+            isMyClassesActive
+              ? 'bg-[#006A3A] text-white shadow-sm'
               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
           ]"
         >
@@ -51,7 +51,7 @@
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
             route.path === '/students'
-              ? 'bg-[#034d31] text-white shadow-sm'
+              ? 'bg-[#006A3A] text-white shadow-sm'
               : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
           ]"
         >
@@ -70,9 +70,9 @@
     </div>
 
     <!-- Pro Banner Card -->
-    <div class="bg-[#f8fafd] dark:bg-slate-800 rounded-2xl p-4 text-center border border-slate-200/80 dark:border-slate-700 shadow-xs">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl p-4 text-center border border-slate-200/80 dark:border-slate-700 shadow-xs">
       <p class="text-xs font-bold text-slate-900 dark:text-emerald-300 mb-2">Upgrade to Pro</p>
-      <button class="w-full bg-[#034d31] hover:bg-[#023824] text-white text-xs font-bold py-2.5 px-3 rounded-xl transition shadow-sm cursor-pointer">
+      <button class="w-full bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold py-2.5 px-3 rounded-xl transition shadow-sm cursor-pointer">
         Go Premium
       </button>
     </div>
@@ -87,4 +87,14 @@ import { authService } from '../../services/authService'
 const route = useRoute()
 
 const isAdmin = computed(() => authService.getCurrentUser()?.role === 'admin')
+
+// "My Classes" stays highlighted on every page that belongs to that section —
+// not just the exact "/" list — so it doesn't go dark the moment you open a
+// class, a chapter, or a quiz/assignment editor inside one.
+const isMyClassesActive = computed(() =>
+  route.path === '/'
+  || route.path.startsWith('/courses/')
+  || route.path.startsWith('/lessons/')
+  || route.path.startsWith('/course/')
+)
 </script>

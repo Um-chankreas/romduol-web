@@ -12,7 +12,7 @@
   <transition name="drawer">
     <aside
       v-if="visible"
-      class="fixed inset-y-0 right-0 z-50 w-full max-w-md flex flex-col bg-[#f8fafd] dark:bg-slate-900 border-l border-slate-200/80 dark:border-slate-800 shadow-2xl"
+      class="fixed inset-y-0 right-0 z-50 w-full max-w-md flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200/80 dark:border-slate-800 shadow-2xl"
       role="dialog"
       aria-modal="true"
     >
@@ -173,7 +173,7 @@
             type="button"
             @click="submit(false)"
             :disabled="creating || !title.trim()"
-            class="px-5 py-2 rounded-full bg-[#034d31] hover:bg-[#023824] text-white text-sm font-bold transition disabled:opacity-50"
+            class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] text-white text-sm font-bold transition disabled:opacity-50"
           >
             {{ creating ? 'Saving…' : 'Save changes' }}
           </button>
@@ -192,7 +192,7 @@
             type="button"
             @click="submit(true)"
             :disabled="creating || !title.trim()"
-            class="px-5 py-2 rounded-full bg-[#034d31] hover:bg-[#023824] text-white text-sm font-bold transition disabled:opacity-50"
+            class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] text-white text-sm font-bold transition disabled:opacity-50"
           >
             Create &amp; add lessons →
           </button>
@@ -234,7 +234,7 @@ const title = ref('')
 const description = ref('')
 const category = ref('')
 const icon = ref('📚')
-const color = ref('#034d31')
+const color = ref('#006A3A')
 const isFree = ref(false)
 const chapters = ref([''])
 
@@ -245,14 +245,14 @@ watch(
     description.value = c?.description || ''
     category.value = c?.category || ''
     icon.value = c?.icon || '📚'
-    color.value = c?.color || '#034d31'
+    color.value = c?.color || '#006A3A'
     isFree.value = !!c?.is_free
   },
   { immediate: true },
 )
 
 const iconOptions = ['📚', '🧮', '🔬', '🎨', '💻', '🌍', '📐', '✏️', '🎵', '⚗️']
-const themeColors = ['#034d31', '#80B3FF', '#4CAF50', '#E91E63', '#FF9800', '#00BCD4', '#9C27B0', '#2196F3', '#9E9E9E']
+const themeColors = ['#006A3A', '#80B3FF', '#4CAF50', '#E91E63', '#FF9800', '#00BCD4', '#9C27B0', '#2196F3', '#9E9E9E']
 
 const labelCls = 'block text-xs font-medium text-slate-800 dark:text-slate-300 mb-1.5'
 const inputCls = 'w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 text-sm'

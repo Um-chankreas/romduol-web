@@ -244,7 +244,7 @@ const inputCls =
       <button
         type="button"
         :disabled="busy || !form.title.trim() || renderingFigures > 0"
-        class="px-4 py-1.5 rounded-lg bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50"
+        class="px-4 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50"
         @click="save"
       >
         {{ busy ? 'Saving…' : unit ? 'Save changes' : 'Add unit' }}

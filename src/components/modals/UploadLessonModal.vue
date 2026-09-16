@@ -12,7 +12,7 @@
   <transition name="drawer">
     <aside
       v-if="visible"
-      class="fixed inset-y-0 right-0 z-50 w-full max-w-xl flex flex-col bg-[#f8fafd] dark:bg-slate-900 border-l border-slate-200/80 dark:border-slate-800 shadow-2xl"
+      class="fixed inset-y-0 right-0 z-50 w-full max-w-xl flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200/80 dark:border-slate-800 shadow-2xl"
       role="dialog"
       aria-modal="true"
     >
@@ -203,7 +203,7 @@
           type="button"
           @click="submitUpload"
           :disabled="busy || !form.title || renderingFigures > 0"
-          class="px-5 py-2 rounded-full bg-[#033B26] hover:bg-[#022819] text-white text-sm font-bold transition disabled:opacity-50"
+          class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] text-white text-sm font-bold transition disabled:opacity-50"
         >
           {{ busy ? 'Saving…' : 'Create chapter' }}
         </button>

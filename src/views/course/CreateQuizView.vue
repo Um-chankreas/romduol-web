@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-[#f8fafd] dark:bg-slate-950 p-6 sm:p-10 text-slate-900 dark:text-slate-100 transition-colors">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 sm:p-10 text-slate-900 dark:text-slate-100 transition-colors">
     <div class="max-w-4xl mx-auto space-y-6 text-left">
       
       <!-- Feedback Messages (Error & Success Banners) -->
@@ -55,7 +55,7 @@
           <button 
             @click="saveQuiz('published')" 
             :disabled="saving"
-            class="px-5 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
+            class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
           >
             Publish Quiz
           </button>
@@ -180,7 +180,7 @@
 
               <button
                 @click="addQuestion"
-                class="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
+                class="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold hover:bg-emerald-100 transition cursor-pointer"
               >
                 + Add Question
               </button>

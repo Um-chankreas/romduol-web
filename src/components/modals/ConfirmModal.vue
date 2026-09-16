@@ -3,7 +3,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
     @click.self="!loading && $emit('close')"
   >
-    <div class="w-full max-w-sm rounded-[28px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-2xl transition-all text-left">
+    <div class="w-full max-w-sm rounded-[28px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-2xl transition-all text-left">
       <div class="w-11 h-11 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center text-lg mb-4">
         ⚠️
       </div>

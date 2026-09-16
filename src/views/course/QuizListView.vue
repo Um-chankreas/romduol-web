@@ -11,7 +11,7 @@
 
       <button
         @click="$router.push({ name: 'CreateQuiz', params: { courseId: activeCourseId }, query: { lessonId: lessonId } })"
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
       >
         <span>+</span> Add Quiz
       </button>
@@ -29,7 +29,7 @@
 
         <button 
           @click="$router.push({ name: 'CreateQuiz', params: { courseId: activeCourseId }, query: { lessonId: lessonId } })"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
         >
           <span>+</span> Add Quiz
         </button>

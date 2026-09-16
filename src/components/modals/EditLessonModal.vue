@@ -3,7 +3,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
     @click.self="!saving && $emit('close')"
   >
-    <div class="w-full max-w-xl rounded-[32px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all max-h-[90vh] overflow-y-auto">
+    <div class="w-full max-w-xl rounded-[32px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all max-h-[90vh] overflow-y-auto">
       <h2 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white mb-5 text-left">
         Edit Chapter
       </h2>
@@ -123,7 +123,7 @@
         <button
           @click="submit"
           :disabled="saving || !form.title"
-          class="px-5 py-2 rounded-full bg-[#033B26] hover:bg-[#022819] disabled:bg-gray-400 text-white text-sm font-semibold transition cursor-pointer disabled:opacity-50 active:scale-95"
+          class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] disabled:bg-gray-400 text-white text-sm font-semibold transition cursor-pointer disabled:opacity-50 active:scale-95"
         >
           {{ saving ? 'Saving...' : 'Save Changes' }}
         </button>

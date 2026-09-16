@@ -200,7 +200,7 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-[#f8fafd] dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
     <div class="flex-1 flex flex-col min-w-0">
@@ -217,7 +217,7 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
           </div>
           <button
             @click="openCreateModal"
-            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer active:scale-95 shrink-0"
+            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
           >
             <span class="text-sm font-normal">+</span> Create Class
           </button>
@@ -347,7 +347,7 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
               class="w-full flex items-center justify-between gap-3 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition rounded-xl px-2 -mx-2 cursor-pointer"
             >
               <div class="flex items-center gap-3 min-w-0">
-                <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0" :style="{ backgroundColor: course.color || '#034d31' }">
+                <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm shrink-0" :style="{ backgroundColor: course.color || '#006A3A' }">
                   <span>{{ course.icon || '📚' }}</span>
                 </div>
                 <div class="min-w-0">

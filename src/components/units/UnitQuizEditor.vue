@@ -499,9 +499,9 @@ const confirmRemoveQuiz = async () => {
 watch(() => props.unitId, load, { immediate: true })
 
 const fieldCls =
-  'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-[#033B26] dark:focus:border-emerald-500'
+  'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-[#006A3A] dark:focus:border-emerald-500'
 const miniSelect =
-  'px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:border-[#033B26] dark:focus:border-emerald-500'
+  'px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 text-xs font-semibold focus:outline-none focus:border-[#006A3A] dark:focus:border-emerald-500'
 // Borderless — used inside an already-bordered answer-choice/explanation
 // card so the field reads as plain text until you click into it, instead of
 // stacking a second box border inside the row.
@@ -512,7 +512,7 @@ const optionFieldCls =
 <template>
   <div>
     <p v-if="loading" class="text-xs text-slate-500 dark:text-slate-400">Checking…</p>
-    <p v-if="msg" class="text-xs text-[#033B26] dark:text-emerald-400 mb-2">{{ msg }}</p>
+    <p v-if="msg" class="text-xs text-[#006A3A] dark:text-emerald-400 mb-2">{{ msg }}</p>
     <p v-if="error" class="text-xs text-red-600 mb-2">{{ error }}</p>
 
     <!-- Inline editor -->
@@ -522,9 +522,9 @@ const optionFieldCls =
       <div class="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
         <span
           class="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full"
-          :class="isPublished ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-emerald-50 dark:bg-emerald-900/30 text-[#033B26] dark:text-emerald-400'"
+          :class="isPublished ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-emerald-50 dark:bg-emerald-900/30 text-[#006A3A] dark:text-emerald-400'"
         >
-          <span class="w-2 h-2 rounded-full shrink-0" :class="isPublished ? 'bg-slate-400' : autosaving ? 'bg-amber-400 animate-pulse' : 'bg-[#033B26] dark:bg-emerald-400'"></span>
+          <span class="w-2 h-2 rounded-full shrink-0" :class="isPublished ? 'bg-slate-400' : autosaving ? 'bg-amber-400 animate-pulse' : 'bg-[#006A3A] dark:bg-emerald-400'"></span>
           <template v-if="isPublished">Published — locked for editing</template>
           <template v-else>Auto-save: {{ autosaving ? 'Saving…' : 'Active' }}</template>
         </span>
@@ -552,7 +552,7 @@ const optionFieldCls =
             <button
               type="button"
               :disabled="saving"
-              class="px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50"
+              class="px-4 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50"
               @click="save('published')"
             >
               {{ saving ? 'Publishing…' : 'Publish' }}
@@ -600,7 +600,7 @@ const optionFieldCls =
             v-model="searchQuery"
             type="text"
             placeholder="Search questions by text or LaTeX…"
-            class="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#033B26] dark:focus:border-emerald-500"
+            class="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-[#006A3A] dark:focus:border-emerald-500"
             @keydown.enter.prevent="onSearchEnter"
             @keydown.esc="clearSearch"
           />
@@ -654,7 +654,7 @@ const optionFieldCls =
             :disabled="pageLoading"
             class="w-7 h-7 rounded-lg text-xs font-bold transition disabled:opacity-40"
             :class="p === editorPage
-              ? 'bg-[#033B26] text-white'
+              ? 'bg-[#006A3A] text-white'
               : 'text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'"
             @click="goToPage(p)"
           >
@@ -677,7 +677,7 @@ const optionFieldCls =
           <button
             type="button"
             :disabled="importing || pageLoading"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50"
             @click="addMenuOpen = !addMenuOpen"
           >
             <span class="text-sm leading-none">+</span> {{ importing ? 'Importing…' : pageLoading ? 'Loading…' : 'Add Questions' }}
@@ -748,7 +748,7 @@ const optionFieldCls =
               <button
                 type="button"
                 title="Insert a square root"
-                class="w-6 h-6 rounded-md text-xs font-bold text-[#033B26] dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                class="w-6 h-6 rounded-md text-xs font-bold text-[#006A3A] dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                 @click="promptRefs.get(q.id)?.insertSqrt()"
               >√</button>
             </span>
@@ -776,7 +776,7 @@ const optionFieldCls =
               :key="oi"
               class="flex items-center gap-3 rounded-2xl border bg-white dark:bg-slate-900 px-4 py-3 shadow-xs transition"
               :class="q.correct_answer === opt && opt !== ''
-                ? 'border-[#033B26] dark:border-emerald-400'
+                ? 'border-[#006A3A] dark:border-emerald-400'
                 : 'border-slate-200 dark:border-slate-800'"
             >
               <button
@@ -784,7 +784,7 @@ const optionFieldCls =
                 :disabled="isPublished"
                 class="w-6 h-6 rounded-full border-2 shrink-0 flex items-center justify-center transition disabled:cursor-not-allowed"
                 :class="q.correct_answer === opt && opt !== ''
-                  ? 'bg-[#033B26] border-[#033B26]'
+                  ? 'bg-[#006A3A] border-[#006A3A]'
                   : 'border-slate-300 dark:border-slate-600'"
                 :aria-label="`Mark option ${String.fromCharCode(65 + oi)} correct`"
                 @click="q.correct_answer = opt; scheduleAutosave()"
@@ -793,17 +793,17 @@ const optionFieldCls =
               </button>
               <span class="text-xs font-bold text-slate-400 w-4 shrink-0">{{ String.fromCharCode(65 + oi) }}.</span>
               <MathInput v-model="q.options[oi]" :placeholder="`Option ${oi + 1}`" :disabled="isPublished" :input-class="optionFieldCls" class="flex-1" @update:model-value="scheduleAutosave" />
-              <span v-if="q.correct_answer === opt && opt !== ''" class="shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#033B26] text-white whitespace-nowrap">✓ Correct Answer</span>
+              <span v-if="q.correct_answer === opt && opt !== ''" class="shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#006A3A] text-white whitespace-nowrap">✓ Correct Answer</span>
               <button v-if="!isPublished && q.options.length > 2" type="button" class="shrink-0 text-slate-400 hover:text-red-500 text-xs" @click="removeOption(q, oi)">✕</button>
             </div>
           </div>
           <button
             v-if="!isPublished && q.options.length < 6"
             type="button"
-            class="mt-3 flex items-center gap-1.5 text-xs font-bold text-[#033B26] dark:text-emerald-400 hover:underline"
+            class="mt-3 flex items-center gap-1.5 text-xs font-bold text-[#006A3A] dark:text-emerald-400 hover:underline"
             @click="addOption(q)"
           >
-            <span class="w-4 h-4 rounded-full border-2 border-[#033B26] dark:border-emerald-400 flex items-center justify-center text-[10px] leading-none">+</span>
+            <span class="w-4 h-4 rounded-full border-2 border-[#006A3A] dark:border-emerald-400 flex items-center justify-center text-[10px] leading-none">+</span>
             Add Answer Option
           </button>
         </div>
@@ -815,13 +815,13 @@ const optionFieldCls =
         </div>
 
         <div class="rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-4">
-          <label class="flex items-center gap-1.5 text-[11px] font-bold text-[#033B26] dark:text-emerald-400 uppercase tracking-wide mb-2">
+          <label class="flex items-center gap-1.5 text-[11px] font-bold text-[#006A3A] dark:text-emerald-400 uppercase tracking-wide mb-2">
             📍 Explanation for Students
           </label>
           <div class="rounded-xl bg-white dark:bg-slate-900 border border-emerald-100 dark:border-emerald-900/30 px-3 py-2">
             <MathInput v-model="q.explanation" multiline :rows="2" placeholder="Explanation (optional)" :disabled="isPublished" :input-class="optionFieldCls" @update:model-value="scheduleAutosave" />
           </div>
-          <p class="flex items-center gap-1 text-[10px] text-[#033B26]/70 dark:text-emerald-400/60 mt-2">
+          <p class="flex items-center gap-1 text-[10px] text-[#006A3A]/70 dark:text-emerald-400/60 mt-2">
             👁 This explanation is visible to students after submitting or reviewing the quiz.
           </p>
         </div>

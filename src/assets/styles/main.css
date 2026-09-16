@@ -26,15 +26,15 @@
         font-family: 'Inter', 'Noto Serif Khmer', 'Khmer OS Siemreap', 'Khmer OS', 'Noto Sans Khmer', sans-serif;
     }
 
-    /* Full screen solid background */
+    /* Full screen solid background — Main Page Background: #F8FAFC (slate-50) */
     body {
-        background-color: #F1FCF0 !important;
+        background-color: #F8FAFC !important;
         color: #0f172a;
     }
 
-    /* Dark mode background */
+    /* Dark mode background (slate-950, matching the dark:bg-slate-950 every view uses) */
     html.dark body {
-        background-color: #031710 !important;
+        background-color: #020617 !important;
         color: #f8fafc;
     }
 

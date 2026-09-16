@@ -6,8 +6,9 @@ import UploadLessonModal from '@/components/modals/UploadLessonModal.vue'
 import EditLessonModal from '@/components/modals/EditLessonModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 import Header from '@/components/layout/Header.vue'
+import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
-import CreateAssignmentModal from '@/components/modals/CreateAssignmentModal.vue'
+import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
 import { unitService } from '@/services/unitService'
@@ -71,7 +72,7 @@ const deleteLessonError = ref(null)
 
 // Customize Modal States
 const showCustomizeModal = ref(false)
-const formColor = ref('#033B26')
+const formColor = ref('#006A3A')
 const formCoverImage = ref(null)
 const formIsFree = ref(false)
 const saving = ref(false)
@@ -79,6 +80,7 @@ const saveError = ref(null)
 const coverImageInputRef = ref(null)
 
 const themeColors = [
+  { hex: '#006A3A', bgHex: '#CFEBDD' },
   { hex: '#80B3FF', bgHex: '#D0E3FF' },
   { hex: '#4CAF50', bgHex: '#C8E6C9' },
   { hex: '#E91E63', bgHex: '#F8BBD0' },
@@ -90,18 +92,22 @@ const themeColors = [
 ]
 
 const tabs = computed(() => [
-  { id: 'lessons', name: 'Lessons', icon: '📖', count: lessons.value.length },
-  { id: 'quizzes', name: 'Quizzes', icon: '❓', count: allQuizzes.value.length },
-  { id: 'assignments', name: 'Assignments', icon: '📋', count: assignments.value.length },
-  { id: 'students', name: 'Students', icon: '👥', count: enrolledStudents.value.length }
+  { id: 'lessons', name: 'Lessons', icon: '📖', tint: 'bg-blue-100 dark:bg-blue-950/50', count: lessons.value.length },
+  { id: 'quizzes', name: 'Quizzes', icon: '❓', tint: 'bg-rose-100 dark:bg-rose-950/50', count: allQuizzes.value.length },
+  { id: 'assignments', name: 'Assignments', icon: '📋', tint: 'bg-violet-100 dark:bg-violet-950/50', count: assignments.value.length },
+  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: enrolledStudents.value.length }
 ])
 
 // ── Assignments ───────────────────────────────────────────────────────────
+// Authoring (create/edit, draft/publish) happens on its own page — see
+// AssignmentEditorView.vue — not in a dialog here.
 const assignments = ref([])
-const showAssignmentModal = ref(false)
-const assignmentToEdit = ref(null)
-const creatingAssignment = ref(false)
-const assignmentError = ref(null)
+
+// View-submissions roster stays a dialog; it's a read/grade surface, not
+// part of the authoring flow that got merged into the editor page.
+const rosterAssignmentId = ref(null)
+const openRoster = (assignmentId) => { rosterAssignmentId.value = assignmentId }
+const closeRoster = () => { rosterAssignmentId.value = null }
 
 const fetchAssignments = async () => {
   try {
@@ -111,28 +117,13 @@ const fetchAssignments = async () => {
   }
 }
 
-const openAssignmentModal = () => {
-  assignmentToEdit.value = null
-  assignmentError.value = null
-  showAssignmentModal.value = true
+// courseTitle rides along as a query param purely so the assignment editor's
+// breadcrumb can show "My Classes / <class> / …" without an extra fetch.
+const goToCreateAssignment = () => {
+  router.push({ name: 'CreateAssignment', params: { courseId: route.params.id }, query: { courseTitle: course.value?.title } })
 }
-const closeAssignmentModal = () => {
-  if (creatingAssignment.value) return
-  showAssignmentModal.value = false
-  assignmentToEdit.value = null
-}
-const handleCreateAssignment = async (payload) => {
-  try {
-    creatingAssignment.value = true
-    assignmentError.value = null
-    const created = await assignmentService.createAssignment({ course_id: route.params.id, ...payload })
-    if (created) assignments.value.unshift(created)
-    showAssignmentModal.value = false
-  } catch (err) {
-    assignmentError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create assignment.'
-  } finally {
-    creatingAssignment.value = false
-  }
+const goToEditAssignment = (assignmentId) => {
+  router.push({ name: 'EditAssignment', params: { courseId: route.params.id, id: assignmentId }, query: { courseTitle: course.value?.title } })
 }
 
 const formatDue = (iso) => {
@@ -394,7 +385,7 @@ onActivated(() => {
 // Customize Modal Handlers
 const openCustomizeModal = () => {
   if (!course.value) return
-  formColor.value = course.value.color || '#033B26'
+  formColor.value = course.value.color || '#006A3A'
   formCoverImage.value = course.value.cover_image || null
   formIsFree.value = !!course.value.is_free
   saveError.value = null
@@ -464,14 +455,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-[#f8fafd] dark:bg-slate-950 overflow-hidden transition-colors">
+  <div class="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden transition-colors">
     <!-- Sidebar (Fixed Height, Non-Scrolling) -->
     <Sidebar class="hidden md:flex shrink-0 h-full" />
 
     <!-- Right Side Container -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
       <!-- Header (Fixed at top) -->
-      <Header class="shrink-0" />
+      <Header class="shrink-0">
+        <template #left>
+          <Breadcrumb :items="[{ label: 'My Classes', to: '/' }, { label: course?.title || 'Class' }]" />
+        </template>
+      </Header>
 
       <!-- Scrollable Content Area -->
       <main class="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col gap-6">
@@ -480,7 +475,7 @@ onMounted(() => {
           <div class="flex items-center">
             <button 
               @click="goBack" 
-              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafd] dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200/80 dark:border-slate-800 shadow-xs transition active:scale-95 cursor-pointer group"
+              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200/80 dark:border-slate-800 shadow-xs transition active:scale-95 cursor-pointer group"
             >
               <svg class="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
@@ -501,36 +496,41 @@ onMounted(() => {
 
           <template v-else-if="course">
             <!-- TOP BANNER -->
-            <div 
+            <div
               class="relative w-full rounded-3xl p-6 sm:p-8 shadow-md overflow-hidden text-white transition-all bg-cover bg-center shrink-0"
-              :style="{ 
-                backgroundColor: course.color || '#033B26',
+              :style="{
+                backgroundColor: course.color || '#006A3A',
                 backgroundImage: course.cover_image ? `url(${course.cover_image})` : 'none'
               }"
             >
-              <div class="relative z-10 flex justify-between items-start">
-                <div class="space-y-3 max-w-2xl">
+              <div class="relative z-10 flex justify-between items-start gap-4">
+                <div class="space-y-3 max-w-2xl min-w-0">
                   <!-- Tags & Code -->
-                  <div class="flex items-center gap-3">
-                    <span class="px-3 py-1 rounded-lg bg-black/30 text-white text-xs font-bold uppercase tracking-wide border border-white/20 backdrop-blur-sm">
+                  <div class="flex items-center flex-wrap gap-2.5">
+                    <span class="px-2.5 py-1 rounded-lg bg-white/15 text-white text-[11px] font-bold uppercase tracking-wide border border-white/20 backdrop-blur-sm">
                       {{ course.category || course.code || 'COURSE' }}
                     </span>
-                    <span class="px-3 py-1 rounded-lg bg-black/30 text-white text-xs font-bold uppercase tracking-wide border border-white/20 backdrop-blur-sm">
+                    <span
+                      :class="[
+                        'px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide shadow-sm',
+                        course.is_free ? 'bg-amber-400 text-amber-950' : 'bg-white/90 text-slate-800'
+                      ]"
+                    >
                       {{ course.is_free ? '🎁 Free' : '💳 Paid' }}
                     </span>
-                    <span class="flex items-center gap-1.5 text-xs font-medium text-white/90 drop-shadow">
+                    <span class="flex items-center gap-1.5 text-xs font-medium text-white/85">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                       </svg>
-                      {{ enrolledStudents.length }} Students
+                      {{ enrolledStudents.length }} Students Enrolled
                     </span>
                   </div>
 
                   <!-- Title & Description -->
-                  <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight drop-shadow-md text-white">
+                  <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight text-white">
                     {{ course.title }}
                   </h1>
-                  <p class="text-sm text-white/90 leading-relaxed max-w-xl drop-shadow">
+                  <p class="text-sm text-white/85 leading-relaxed max-w-xl">
                     {{ course.description || 'No description provided for this course.' }}
                   </p>
                 </div>
@@ -539,40 +539,55 @@ onMounted(() => {
                 <div class="flex items-center gap-2 shrink-0">
                   <button
                     @click="openCustomizeModal"
-                    class="flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-semibold backdrop-blur-md border border-white/30 transition cursor-pointer shadow-sm active:scale-95"
+                    title="Customize"
+                    aria-label="Customize class"
+                    class="w-9 h-9 grid place-items-center rounded-xl bg-white/15 hover:bg-white/25 text-white backdrop-blur-sm border border-white/20 transition cursor-pointer active:scale-95"
                   >
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
-                    Customize
                   </button>
 
                   <!-- Delete Class Button -->
                   <button
                     @click="openDeleteModal"
-                    class="flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 hover:bg-red-600/80 text-white text-xs font-semibold backdrop-blur-md border border-white/30 transition cursor-pointer shadow-sm active:scale-95"
+                    class="w-9 h-9 grid place-items-center rounded-xl bg-white/15 hover:bg-red-600/80 text-white backdrop-blur-sm border border-white/20 transition cursor-pointer active:scale-95"
                     aria-label="Delete class"
                     title="Delete class"
                   >
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
               </div>
 
-              <div class="absolute inset-0 bg-black/20 z-0 pointer-events-none"></div>
+              <!-- Only dim for legibility when there's a photo behind the text. -->
+              <div v-if="course.cover_image" class="absolute inset-0 bg-black/25 z-0 pointer-events-none"></div>
             </div>
 
-            <!-- ACTION BUTTON -->
-            <div class="flex justify-end">
-              <button 
-                @click="openUploadModal"
-                class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
-              >
-                <span class="text-base font-normal">+</span>
-                Upload Lesson
-              </button>
+            <!-- CURRICULUM & TASKS HEADER -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <h2 class="text-lg font-extrabold text-slate-900 dark:text-white">Curriculum &amp; Tasks</h2>
+                <span class="px-2.5 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold">
+                  Active Term
+                </span>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <button
+                  @click="openUploadModal"
+                  class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-95"
+                >
+                  <span class="text-sm font-normal leading-none">+</span> Upload Lesson
+                </button>
+                <button
+                  @click="goToCreateAssignment"
+                  class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
+                >
+                  <span class="text-sm font-normal leading-none">+</span> Create Assignment
+                </button>
+              </div>
             </div>
 
             <!-- MAIN CONTENT LAYOUT -->
@@ -584,14 +599,19 @@ onMounted(() => {
                   :key="tab.id"
                   @click="activeTab = tab.id"
                   :class="[
-                    'w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer',
+                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer',
                     activeTab === tab.id
-                      ? 'bg-[#033B26] text-white shadow-sm'
-                      : 'text-slate-700 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-slate-800'
+                      ? 'bg-[#006A3A] text-white shadow-sm'
+                      : 'text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   ]"
                 >
-                  <div class="flex items-center gap-3">
-                    <span class="text-base">{{ tab.icon }}</span>
+                  <div class="flex items-center gap-2.5">
+                    <span
+                      :class="[
+                        'w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0',
+                        activeTab === tab.id ? 'bg-white/15' : tab.tint
+                      ]"
+                    >{{ tab.icon }}</span>
                     <span>{{ tab.name }}</span>
                   </div>
                   <span
@@ -611,7 +631,7 @@ onMounted(() => {
                 <!-- LESSONS TAB -->
                 <div v-if="activeTab === 'lessons'">
                   <div v-if="lessons.length === 0" class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-[#ffffff] dark:bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center shadow-xs">
-                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 flex items-center justify-center text-xl mb-3">
+                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-xl mb-3">
                       ☁️
                     </div>
                     <h3 class="text-base font-bold text-slate-900 dark:text-white">
@@ -686,7 +706,7 @@ onMounted(() => {
                       <!-- CHAPTER CONTENT (text units — Markdown / LaTeX) -->
                       <router-link
                         :to="{ name: 'Lesson', params: { lessonId: lesson.id } }"
-                        class="inline-flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#033B26] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition active:scale-95"
+                        class="inline-flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition active:scale-95"
                       >
                         📖 Open chapter &amp; units
                       </router-link>
@@ -774,47 +794,79 @@ onMounted(() => {
                 </div>
 
                 <!-- ASSIGNMENTS TAB -->
-                <div v-else-if="activeTab === 'assignments'" class="space-y-4">
-                  <div class="flex justify-end">
-                    <button
-                      @click="openAssignmentModal"
-                      class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold transition active:scale-95"
-                    >
-                      <span class="text-sm font-normal">+</span> Create Assignment
-                    </button>
-                  </div>
-
+                <div v-else-if="activeTab === 'assignments'" class="space-y-3">
                   <div
                     v-if="assignments.length === 0"
                     class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900/30 p-8 text-center shadow-xs"
                   >
-                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto">📋</div>
+                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto">📋</div>
                     <h3 class="text-base font-bold text-slate-900 dark:text-white">No assignments yet</h3>
                     <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Create one for students to submit work.</p>
                   </div>
 
-                  <div v-else class="space-y-3">
-                    <div
-                      v-for="a in assignments"
-                      :key="a.id"
-                      class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs text-left"
-                    >
-                      <div class="flex items-start justify-between gap-3">
-                        <h4 class="text-sm font-bold text-slate-900 dark:text-white">{{ a.title }}</h4>
+                  <div
+                    v-for="a in assignments"
+                    :key="a.id"
+                    class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs hover:shadow-md transition text-left"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="flex items-center gap-2 flex-wrap min-w-0">
+                        <h4 class="text-sm font-bold text-slate-900 dark:text-white truncate">{{ a.title }}</h4>
                         <span
-                          v-if="formatDue(a.due_date)"
                           :class="[
-                            'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold',
-                            isOverdue(a.due_date)
-                              ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                            'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase',
+                            a.type === 'quiz'
+                              ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+                              : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
                           ]"
                         >
-                          {{ isOverdue(a.due_date) ? 'Was due' : 'Due' }} {{ formatDue(a.due_date) }}
+                          {{ a.type === 'quiz' ? 'Quiz' : 'Homework' }}
                         </span>
-                        <span v-else class="shrink-0 text-[10px] font-bold text-slate-400">No due date</span>
                       </div>
-                      <p v-if="a.description" class="mt-1.5 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{{ a.description }}</p>
+                      <span
+                        v-if="formatDue(a.due_date)"
+                        :class="[
+                          'shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold',
+                          isOverdue(a.due_date)
+                            ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                        ]"
+                      >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        {{ isOverdue(a.due_date) ? 'Was due' : 'Due' }} {{ formatDue(a.due_date) }}
+                      </span>
+                      <span v-else class="shrink-0 text-[11px] font-medium text-slate-400">No due date</span>
+                    </div>
+
+                    <p v-if="a.description" class="mt-1.5 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{{ a.description }}</p>
+
+                    <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <span class="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <span
+                          class="w-2 h-2 rounded-full shrink-0"
+                          :class="a.status === 'published' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"
+                        ></span>
+                        {{ a.status === 'published' ? 'Published' : 'Draft' }}
+                      </span>
+                      <div class="flex items-center gap-3 text-xs font-bold">
+                        <button
+                          type="button"
+                          class="text-[#006A3A] dark:text-emerald-400 hover:underline"
+                          @click="goToEditAssignment(a.id)"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          v-if="a.type === 'quiz'"
+                          type="button"
+                          class="text-[#006A3A] dark:text-emerald-400 hover:underline"
+                          @click="openRoster(a.id)"
+                        >
+                          View submissions
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -831,7 +883,7 @@ onMounted(() => {
                       class="p-4 rounded-2xl bg-[#ffffff] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between"
                     >
                       <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#033B26] dark:text-emerald-400 flex items-center justify-center text-sm font-bold">
+                        <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-sm font-bold">
                           {{ student.name?.charAt(0).toUpperCase() }}
                         </div>
                         <div class="text-left">
@@ -856,14 +908,11 @@ onMounted(() => {
         @close="closeUploadModal"
         @upload="handleUpload"
       />
-      <!-- CREATE ASSIGNMENT MODAL -->
-      <CreateAssignmentModal
-        v-if="showAssignmentModal"
-        :saving="creatingAssignment"
-        :error="assignmentError"
-        :assignment="assignmentToEdit"
-        @close="closeAssignmentModal"
-        @create="handleCreateAssignment"
+      <!-- ASSIGNMENT SUBMISSIONS / SCORES ROSTER (quiz-type only) -->
+      <AssignmentRosterView
+        v-if="rosterAssignmentId"
+        :assignment-id="rosterAssignmentId"
+        @close="closeRoster"
       />
       <!-- EDIT LESSON MODAL -->
       <EditLessonModal
@@ -903,7 +952,7 @@ onMounted(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       @click.self="closeCustomizeModal"
     >
-      <div class="w-full max-w-xl rounded-[32px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all">
+      <div class="w-full max-w-xl rounded-[32px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl transition-all">
         <h2 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white mb-5 text-left">
           Customize appearance
         </h2>

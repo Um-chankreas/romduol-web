@@ -69,6 +69,16 @@ const routes = [
         name: 'EditQuiz',
         component: () => import('@/views/course/CreateQuizView.vue') // Reusing your creator view
     },
+    {
+        path: '/course/:courseId/assignment/create',
+        name: 'CreateAssignment',
+        component: () => import('@/views/course/AssignmentEditorView.vue')
+    },
+    {
+        path: '/course/:courseId/assignment/edit/:id',
+        name: 'EditAssignment',
+        component: () => import('@/views/course/AssignmentEditorView.vue') // Reusing the creator view
+    },
     // Fallback route
     {
         path: '/:pathMatch(.*)*',

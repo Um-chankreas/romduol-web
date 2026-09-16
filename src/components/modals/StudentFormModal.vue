@@ -3,7 +3,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
     @click.self="!busy && $emit('close')"
   >
-    <div class="w-full max-w-md rounded-[28px] bg-[#f8fafd] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div class="w-full max-w-md rounded-[28px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
       <h2 class="text-xl font-semibold text-slate-900 dark:text-white mb-5 text-left">
         {{ isEdit ? 'Edit student' : 'Add student' }}
       </h2>
@@ -83,7 +83,7 @@
         <button
           @click="submit"
           :disabled="busy || !canSubmit"
-          class="px-5 py-2 rounded-full bg-[#034d31] hover:bg-[#023824] text-white text-sm font-bold transition cursor-pointer disabled:opacity-50"
+          class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] text-white text-sm font-bold transition cursor-pointer disabled:opacity-50"
         >
           {{ busy ? 'Saving…' : (isEdit ? 'Save Changes' : 'Add Student') }}
         </button>

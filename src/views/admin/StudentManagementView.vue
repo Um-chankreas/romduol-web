@@ -330,7 +330,7 @@ const restore = async (s) => {
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-[#f8fafd] dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
     <div class="flex-1 flex flex-col min-w-0">
@@ -351,7 +351,7 @@ const restore = async (s) => {
           <button
             v-if="tab === 'students'"
             @click="openAdd"
-            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer active:scale-95 shrink-0"
+            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
           >
             <span class="text-sm font-normal">+</span>
             Add Student
@@ -359,7 +359,7 @@ const restore = async (s) => {
           <button
             v-else-if="tab === 'teachers'"
             @click="openAddTeacher"
-            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#034d31] text-white font-bold text-xs shadow-md hover:bg-[#023824] transition cursor-pointer active:scale-95 shrink-0"
+            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
           >
             <span class="text-sm font-normal">+</span>
             Add Teacher
@@ -375,7 +375,7 @@ const restore = async (s) => {
             :class="[
               'px-4 py-2.5 text-sm font-bold transition cursor-pointer -mb-px border-b-2',
               tab === t.id
-                ? 'border-[#034d31] text-[#034d31] dark:text-emerald-400 dark:border-emerald-400'
+                ? 'border-[#006A3A] text-[#006A3A] dark:text-emerald-400 dark:border-emerald-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             ]"
           >
@@ -406,7 +406,7 @@ const restore = async (s) => {
                 :class="[
                   'px-2.5 py-1 rounded-lg font-bold capitalize transition cursor-pointer',
                   paidFilter === opt
-                    ? 'bg-[#034d31] text-white'
+                    ? 'bg-[#006A3A] text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                 ]"
               >

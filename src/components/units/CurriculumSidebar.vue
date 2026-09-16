@@ -311,7 +311,7 @@ defineExpose({
         >
           <span
             class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] shrink-0"
-            :class="c.id === activeChapterId ? 'bg-[#033B26] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'"
+            :class="c.id === activeChapterId ? 'bg-[#006A3A] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'"
           >{{ ci + 1 }}</span>
           <span class="flex-1 min-w-0 truncate">{{ c.title }}</span>
           <svg
@@ -423,7 +423,7 @@ defineExpose({
                 <button
                   type="button"
                   :disabled="importBusy || !importState.markdown.trim() || renderingFigures > 0"
-                  class="px-3 py-1 rounded-lg bg-[#033B26] hover:bg-[#022819] text-white text-[11px] font-bold disabled:opacity-50"
+                  class="px-3 py-1 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-[11px] font-bold disabled:opacity-50"
                   @click="runBulkImport(c.id)"
                 >
                   {{ importBusy ? 'Importing…' : 'Import units' }}

@@ -204,7 +204,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex h-screen bg-[#f8fafd] dark:bg-slate-950 overflow-hidden transition-colors">
+  <div class="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden transition-colors">
     <Sidebar class="hidden md:flex shrink-0 h-full" />
 
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -268,7 +268,7 @@ onMounted(load)
                         type="button"
                         class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition"
                         :class="activeTab === t.id
-                          ? 'bg-[#033B26] text-white'
+                          ? 'bg-[#006A3A] text-white'
                           : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
                         @click="activeTab = t.id"
                       >
@@ -336,7 +336,7 @@ onMounted(load)
                       <button
                         :disabled="markingComplete || completed"
                         @click="markComplete"
-                        class="px-5 py-2.5 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+                        class="px-5 py-2.5 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
                       >
                         {{ completed ? '✓ Chapter completed' : markingComplete ? 'Saving…' : 'Mark chapter complete' }}
                       </button>

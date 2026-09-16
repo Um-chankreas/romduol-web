@@ -103,7 +103,7 @@ const handleSaveProfile = async (data) => {
 </script>
 
 <template>
-  <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-[#f8fafd] dark:bg-slate-900 transition-colors">
+  <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
     <div class="min-w-0 flex-1">
       <slot name="left" />
     </div>
@@ -113,7 +113,7 @@ const handleSaveProfile = async (data) => {
         @click="toggleTheme"
         type="button"
         title="Toggle Theme"
-        class="p-2 rounded-full bg-[#f8fafd] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition shadow-xs cursor-pointer"
+        class="p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition shadow-xs cursor-pointer"
       >
         <span v-if="isDark" class="text-base leading-none block">☀️</span>
         <span v-else class="text-base leading-none block">🌙</span>
@@ -121,7 +121,7 @@ const handleSaveProfile = async (data) => {
 
       <button
         type="button"
-        class="relative p-2 rounded-full bg-[#f8fafd] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition shadow-xs cursor-pointer"
+        class="relative p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition shadow-xs cursor-pointer"
       >
         <span class="text-base leading-none block">🔔</span>
         <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
@@ -138,7 +138,7 @@ const handleSaveProfile = async (data) => {
             <p class="text-sm font-bold text-slate-900 dark:text-white leading-tight">{{ displayName }}</p>
             <p class="text-[11px] text-slate-700 dark:text-slate-400 font-medium mt-0.5 capitalize">{{ displayRole }}</p>
           </div>
-          <div class="w-10 h-10 rounded-full bg-[#034d31] text-white flex items-center justify-center font-bold text-sm ring-2 ring-emerald-600/30 shadow-sm shrink-0 overflow-hidden">
+          <div class="w-10 h-10 rounded-full bg-[#006A3A] text-white flex items-center justify-center font-bold text-sm ring-2 ring-emerald-600/30 shadow-sm shrink-0 overflow-hidden">
             <img v-if="currentUser?.avatar_url" :src="currentUser.avatar_url" alt="Avatar" class="w-full h-full object-cover" />
             <span v-else>{{ initials }}</span>
           </div>

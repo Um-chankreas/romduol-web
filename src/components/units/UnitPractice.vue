@@ -183,7 +183,7 @@ watch(
         </p>
         <button
           type="button"
-          class="px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold transition active:scale-95"
+          class="px-4 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold transition active:scale-95"
           @click="started = true"
         >
           Start practice
@@ -283,7 +283,7 @@ watch(
             v-if="!isLastQuestion"
             type="button"
             :disabled="nextLoading"
-            class="px-4 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+            class="px-4 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
             @click="goNext"
           >
             {{ nextLoading ? 'Loading…' : 'Next' }}
@@ -292,7 +292,7 @@ watch(
             v-else-if="!result"
             type="button"
             :disabled="submitting || !allAnswered"
-            class="px-5 py-2 rounded-xl bg-[#033B26] hover:bg-[#022819] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
+            class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold disabled:opacity-50 transition active:scale-95"
             @click="submit"
           >
             {{ submitting ? 'Submitting…' : 'Submit answers' }}
