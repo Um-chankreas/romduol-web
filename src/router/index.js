@@ -37,6 +37,12 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] } // Admin-only
     },
     {
+        path: '/tools/latex-to-text',
+        name: 'LatexToText',
+        component: () => import('@/views/tools/LatexConverterView.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/privacy-policy',
         name: 'PrivacyPolicy',
         component: () => import('@/views/legal/PrivacyPolicyView.vue')
