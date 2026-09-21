@@ -10,6 +10,9 @@
       <span v-if="!isTeacher"> You will be returned shortly…</span>
     </div>
 
+    <!-- Teacher: save the OBS recording after ending the class -->
+    <SaveRecordingModal v-if="showSaveRecording" :live-class-id="targetClassId" />
+
     <!-- Toast -->
     <div
       v-if="toast"
@@ -256,7 +259,83 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         </button>
+        <!-- Camera / mic / speaker picker -->
+        <div class="relative">
+          <button
+            @click="showDevices = !showDevices; if (showDevices) refreshDevices()"
+            title="Camera & audio settings"
+            :class="[
+              'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
+              showDevices ? 'bg-[#016a36] text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+            ]"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
+          <div
+            v-if="showDevices"
+            class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-4 space-y-3 z-50"
+          >
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold">Devices</h3>
+              <button @click="showDevices = false" class="text-slate-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <label class="block text-[11px] font-semibold text-slate-300">
+              Camera
+              <select
+                :value="selectedCamera"
+                @change="changeCamera($event.target.value)"
+                :disabled="isScreenSharing"
+                class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-[#016a36] disabled:opacity-50"
+              >
+                <option v-for="(d, i) in cameras" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Camera ${i + 1}` }}</option>
+              </select>
+            </label>
+
+            <label class="block text-[11px] font-semibold text-slate-300">
+              Microphone
+              <select
+                :value="selectedMic"
+                @change="changeMic($event.target.value)"
+                class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-[#016a36]"
+              >
+                <option v-for="(d, i) in microphones" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Microphone ${i + 1}` }}</option>
+              </select>
+            </label>
+
+            <label v-if="speakers.length" class="block text-[11px] font-semibold text-slate-300">
+              Speaker
+              <select
+                :value="selectedSpeaker"
+                @change="changeSpeaker($event.target.value)"
+                class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-[#016a36]"
+              >
+                <option v-for="(d, i) in speakers" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Speaker ${i + 1}` }}</option>
+              </select>
+            </label>
+          </div>
+        </div>
       </template>
+
+      <!-- Teacher: copy the OBS recorder URL -->
+      <button
+        v-if="isTeacher"
+        @click="copyRecorderLink"
+        :title="recorderCopied ? 'Recorder link copied' : 'Copy OBS recorder link'"
+        :class="[
+          'hidden sm:block p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
+          recorderCopied ? 'bg-[#016a36] text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+        ]"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" stroke-width="2" />
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
+        </svg>
+      </button>
 
       <!-- Copy stream link (everyone) -->
       <button
@@ -361,6 +440,7 @@ import { authService } from '../../services/authService';
 import { connectLiveClassSocket } from '../../services/liveClassSocket';
 import { generateAgoraUid } from '../../utils/agoraUid';
 import brandLogo from '@/assets/logo/RS_logo.png';
+import SaveRecordingModal from '../../components/modals/SaveRecordingModal.vue';
 
 const props = defineProps({
   liveClassId: { type: String, default: '' }
@@ -389,6 +469,8 @@ const canPublish = computed(() => rtcRole.value === 'teacher' || rtcRole.value =
 // UI
 const showMobileDrawer = ref(false);
 const linkCopied = ref(false);
+const recorderCopied = ref(false);
+const showSaveRecording = ref(false);
 const currentTime = ref('');
 const toast = ref('');
 let toastTimer = null;
@@ -573,7 +655,18 @@ onMounted(async () => {
   }
 });
 
+// Teacher closing the tab mid-class: ask first. (The server also auto-ends a
+// class whose teacher has been gone for a few minutes.)
+const warnBeforeClose = (e) => {
+  if (isTeacher.value && classActive.value && !hasLeft) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+};
+window.addEventListener('beforeunload', warnBeforeClose);
+
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', warnBeforeClose);
   clearInterval(clockTimer);
   clearInterval(pollTimer);
   leaveLiveClass();
@@ -726,9 +819,10 @@ async function initializeAgora(appId, channel, token, numericUid) {
 
   if (canPublish.value) {
     connectionStatus.value = 'Requesting camera access...';
-    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true, ...savedDevice('mic', 'microphoneId') });
     localVideoTrack = await AgoraRTC.createCameraVideoTrack({
-      encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } }
+      encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      ...savedDevice('camera', 'cameraId')
     });
 
     connectionStatus.value = 'Publishing media...';
@@ -737,6 +831,7 @@ async function initializeAgora(appId, channel, token, numericUid) {
   }
 
   isConnected.value = true;
+  if (canPublish.value) refreshDevices();
   await nextTick();
   if (localVideoTrack) localVideoTrack.play('local-player', { fit: 'cover' });
 }
@@ -775,6 +870,7 @@ const handleUserPublished = async (user, mediaType) => {
     // Keep an avatar tile for a camera-off participant who still has audio.
     upsertRemote(user.uid, { hasAudio: true });
     user.audioTrack.play();
+    applySpeaker(user);
   }
 };
 
@@ -813,13 +909,14 @@ async function upgradeToCoHost() {
     rtcRole.value = data.role || 'co_host';
 
     if (!localAudioTrack) {
-      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true, ...savedDevice('mic', 'microphoneId') });
     } else {
       await localAudioTrack.setEnabled(true);
     }
     if (!localVideoTrack) {
       localVideoTrack = await AgoraRTC.createCameraVideoTrack({
-        encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } }
+        encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        ...savedDevice('camera', 'cameraId')
       });
     } else {
       await localVideoTrack.setEnabled(true);
@@ -831,6 +928,7 @@ async function upgradeToCoHost() {
 
     audioEnabled.value = true;
     videoEnabled.value = true;
+    refreshDevices();
     await nextTick();
     localVideoTrack.play('local-player', { fit: 'cover' });
   } catch (err) {
@@ -854,6 +952,91 @@ async function downgradeFromCoHost() {
     isPublishing = false;
   }
 }
+
+// ========================================================================
+// Device selection (camera / microphone / speaker), like Zoom or Meet
+// ========================================================================
+const showDevices = ref(false);
+const cameras = ref([]);
+const microphones = ref([]);
+const speakers = ref([]);
+const selectedCamera = ref('');
+const selectedMic = ref('');
+const selectedSpeaker = ref('');
+
+const DEVICE_KEY = (kind) => `live.device.${kind}`;
+const readDevice = (kind) => {
+  try { return localStorage.getItem(DEVICE_KEY(kind)) || ''; } catch (_) { return ''; }
+};
+const savedDevice = (kind, optionName) => {
+  const id = readDevice(kind);
+  return id ? { [optionName]: id } : {};
+};
+const rememberDevice = (kind, id) => {
+  try { localStorage.setItem(DEVICE_KEY(kind), id); } catch (_) { /* noop */ }
+};
+
+// Labels are blank until the browser has granted camera/mic permission, so
+// this is called again once our tracks exist.
+async function refreshDevices() {
+  try {
+    const [cams, mics, spk] = await Promise.all([
+      AgoraRTC.getCameras().catch(() => []),
+      AgoraRTC.getMicrophones().catch(() => []),
+      AgoraRTC.getPlaybackDevices().catch(() => []),
+    ]);
+    cameras.value = cams;
+    microphones.value = mics;
+    speakers.value = spk;
+    selectedCamera.value = localVideoTrack?.getMediaStreamTrack?.().getSettings?.().deviceId || selectedCamera.value || cams[0]?.deviceId || '';
+    selectedMic.value = localAudioTrack?.getMediaStreamTrack?.().getSettings?.().deviceId || selectedMic.value || mics[0]?.deviceId || '';
+    if (!selectedSpeaker.value) selectedSpeaker.value = readDevice('speaker') || spk[0]?.deviceId || '';
+  } catch (err) {
+    console.warn('refreshDevices failed:', err);
+  }
+}
+
+async function changeCamera(deviceId) {
+  selectedCamera.value = deviceId;
+  rememberDevice('camera', deviceId);
+  try {
+    if (localVideoTrack) await localVideoTrack.setDevice(deviceId);
+  } catch (err) {
+    flash('Could not switch camera. Is it in use by another app?', 4000);
+    console.error('setDevice(camera) failed:', err);
+  }
+}
+
+async function changeMic(deviceId) {
+  selectedMic.value = deviceId;
+  rememberDevice('mic', deviceId);
+  try {
+    if (localAudioTrack) await localAudioTrack.setDevice(deviceId);
+  } catch (err) {
+    flash('Could not switch microphone.', 4000);
+    console.error('setDevice(mic) failed:', err);
+  }
+}
+
+function changeSpeaker(deviceId) {
+  selectedSpeaker.value = deviceId;
+  rememberDevice('speaker', deviceId);
+  applySpeaker();
+}
+
+// Route remote audio to the chosen output (Chromium only).
+function applySpeaker(user) {
+  if (!selectedSpeaker.value) return;
+  const list = user ? [user] : (agoraEngine?.remoteUsers || []);
+  for (const u of list) {
+    try { u.audioTrack?.setPlaybackDevice?.(selectedSpeaker.value); } catch (_) { /* noop */ }
+  }
+}
+
+// Plug / unplug a device while in class.
+AgoraRTC.onCameraChanged = () => refreshDevices();
+AgoraRTC.onMicrophoneChanged = () => refreshDevices();
+AgoraRTC.onPlaybackDeviceChanged = () => refreshDevices();
 
 // ========================================================================
 // Controls
@@ -1056,7 +1239,30 @@ async function teardownAndExit() {
     console.error('Teardown error:', err);
   } finally {
     emit('left-class');
-    if (route.name === 'LiveStream') router.push('/');
+    if (route.name === 'LiveStream') {
+      // After ending, show the teacher the "save OBS recording" dialog over
+      // this page; it closes the tab once the upload completes.
+      if (isTeacher.value && liveClass.value.status === 'completed') {
+        showSaveRecording.value = true;
+      } else {
+        router.push('/');
+      }
+    }
+  }
+}
+
+// Teacher: copy the URL to paste into an OBS Browser Source.
+async function copyRecorderLink() {
+  try {
+    const res = await liveClassService.getRecorderLink(targetClassId.value);
+    const key = (res.data || res).key;
+    const url = `${window.location.origin}/live/${targetClassId.value}/record?key=${encodeURIComponent(key)}`;
+    await navigator.clipboard.writeText(url);
+    recorderCopied.value = true;
+    flash('Recorder link copied. Paste it into an OBS Browser Source (valid 8 hours).', 5000);
+    setTimeout(() => (recorderCopied.value = false), 2500);
+  } catch (err) {
+    flash(err.response?.data?.error || 'Could not create recorder link', 4000);
   }
 }
 

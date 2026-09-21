@@ -31,6 +31,18 @@ const routes = [
         meta: { requiresAuth: true } // Protected route
     },
     {
+        // Read-only view for OBS to capture. Authorised by ?key=, not a login.
+        path: '/live/:id/record',
+        name: 'LiveRecorder',
+        component: () => import('../views/live/LiveRecorderView.vue')
+    },
+    {
+        path: '/live/:id/save-recording',
+        name: 'LiveRecordingSave',
+        component: () => import('../views/live/LiveRecordingSaveView.vue'),
+        meta: { requiresAuth: true, roles: ['teacher'] }
+    },
+    {
         path: '/students',
         name: 'StudentManagement',
         component: () => import('@/views/admin/StudentManagementView.vue'),

@@ -30,6 +30,12 @@ export const liveClassService = {
         return response.data
     },
 
+    // Teacher: get a key for the OBS recorder page (/live/:id/record?key=...)
+    async getRecorderLink(id) {
+        const response = await api.post(`/live-classes/${id}/recorder-link`)
+        return response.data
+    },
+
     // Start live class
     async startLiveClass(id) {
         const response = await api.put(`/live-classes/${id}/start`)
