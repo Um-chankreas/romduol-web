@@ -10,6 +10,16 @@
       <span v-if="!isTeacher"> You will be returned shortly…</span>
     </div>
 
+    <!-- Camera / mic unavailable: joined view-only (or partial) instead -->
+    <div
+      v-if="deviceNotice"
+      role="status"
+      class="bg-amber-500/15 border-b border-amber-500/30 text-amber-200 text-xs md:text-sm px-4 py-2 flex items-start justify-between gap-3 shrink-0"
+    >
+      <span>{{ deviceNotice }}</span>
+      <button @click="deviceNotice = ''" class="text-amber-300 hover:text-white shrink-0 cursor-pointer" aria-label="Dismiss">✕</button>
+    </div>
+
     <!-- Teacher: save the OBS recording after ending the class -->
     <SaveRecordingModal v-if="showSaveRecording" :live-class-id="targetClassId" />
 
@@ -83,9 +93,16 @@
               <span class="text-[#ffce04] font-extrabold text-[10px] md:text-xs tracking-[0.22em] uppercase mt-0.5">Scholars</span>
             </div>
           </div>
-          <div class="w-8 h-8 md:w-10 md:h-10 border-4 border-[#016a36] border-t-transparent rounded-full animate-spin"></div>
-          <p class="text-xs md:text-sm">Connecting to live session...</p>
+          <div v-if="!connectionFailed" class="w-8 h-8 md:w-10 md:h-10 border-4 border-[#016a36] border-t-transparent rounded-full animate-spin"></div>
+          <p class="text-xs md:text-sm">{{ connectionFailed ? "We couldn't connect to the live session." : 'Connecting to live session...' }}</p>
           <p class="text-[10px] md:text-xs text-slate-500">{{ connectionStatus }}</p>
+          <button
+            v-if="connectionFailed"
+            @click="reloadPage"
+            class="px-4 py-2 rounded-lg bg-[#016a36] hover:bg-[#015a2d] text-white text-xs md:text-sm font-semibold cursor-pointer"
+          >
+            Try again
+          </button>
         </div>
 
         <!-- Responsive Grid Layout -->
@@ -212,9 +229,11 @@
     <!-- Bottom Controls Bar -->
     <footer class="flex items-center justify-center space-x-2 md:space-x-4 px-3 md:px-6 py-3 bg-slate-800/90 border-t border-slate-700/50 z-20 shrink-0">
       <template v-if="canPublish">
+        <!-- Microphone toggle + device picker -->
+        <div class="relative flex items-center gap-0.5" data-device-menu>
         <button
           @click="toggleAudio"
-          :title="audioEnabled ? 'Mute microphone' : 'Unmute microphone'"
+          :title="!micAvailable ? 'No microphone available — click to retry' : (audioEnabled ? 'Mute microphone' : 'Unmute microphone')"
           :class="[
             'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
             audioEnabled ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-red-600 text-white hover:bg-red-700'
@@ -228,11 +247,47 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
           </svg>
         </button>
+        <button
+          @click="toggleDeviceMenu('mic')"
+          title="Choose microphone"
+          aria-haspopup="menu"
+          :aria-expanded="openMenu === 'mic'"
+          :class="[
+            'h-8 w-6 grid place-items-center rounded-full transition cursor-pointer',
+            openMenu === 'mic' ? 'bg-slate-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+          ]"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+        <div
+          v-if="openMenu === 'mic'"
+          role="menu"
+          class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-xl shadow-2xl py-1.5 z-50"
+        >
+          <p class="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Microphone</p>
+          <p v-if="!microphones.length" class="px-3 py-2 text-xs text-slate-300">No microphone found</p>
+          <button
+            v-for="(d, i) in microphones"
+            :key="d.deviceId"
+            role="menuitemradio"
+            :aria-checked="d.deviceId === selectedMic"
+            @click="pickDevice('mic', d.deviceId)"
+            :class="['w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-700 cursor-pointer', d.deviceId === selectedMic ? 'text-white font-semibold' : 'text-slate-200']"
+          >
+            <span class="w-4 shrink-0 text-emerald-400">{{ d.deviceId === selectedMic ? '✓' : '' }}</span>
+            <span class="truncate">{{ d.label || `Microphone ${i + 1}` }}</span>
+          </button>
+        </div>
+        </div>
 
+        <!-- Camera toggle + device picker -->
+        <div class="relative flex items-center gap-0.5" data-device-menu>
         <button
           @click="toggleVideo"
           :disabled="isScreenSharing"
-          :title="isScreenSharing ? 'Camera unavailable while sharing screen' : (videoEnabled ? 'Turn camera off' : 'Turn camera on')"
+          :title="isScreenSharing ? 'Camera unavailable while sharing screen' : (!cameraAvailable ? 'No camera available — click to retry' : (videoEnabled ? 'Turn camera off' : 'Turn camera on'))"
           :class="[
             'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
             isScreenSharing ? 'opacity-40 cursor-not-allowed bg-slate-700 text-slate-400' :
@@ -246,6 +301,41 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
           </svg>
         </button>
+        <button
+          @click="toggleDeviceMenu('camera')"
+          :disabled="isScreenSharing"
+          title="Choose camera"
+          aria-haspopup="menu"
+          :aria-expanded="openMenu === 'camera'"
+          :class="[
+            'h-8 w-6 grid place-items-center rounded-full transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed',
+            openMenu === 'camera' ? 'bg-slate-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+          ]"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+        <div
+          v-if="openMenu === 'camera'"
+          role="menu"
+          class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-xl shadow-2xl py-1.5 z-50"
+        >
+          <p class="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Camera</p>
+          <p v-if="!cameras.length" class="px-3 py-2 text-xs text-slate-300">No camera found</p>
+          <button
+            v-for="(d, i) in cameras"
+            :key="d.deviceId"
+            role="menuitemradio"
+            :aria-checked="d.deviceId === selectedCamera"
+            @click="pickDevice('camera', d.deviceId)"
+            :class="['w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-700 cursor-pointer', d.deviceId === selectedCamera ? 'text-white font-semibold' : 'text-slate-200']"
+          >
+            <span class="w-4 shrink-0 text-emerald-400">{{ d.deviceId === selectedCamera ? '✓' : '' }}</span>
+            <span class="truncate">{{ d.label || `Camera ${i + 1}` }}</span>
+          </button>
+        </div>
+        </div>
 
         <button
           v-if="isTeacher"
@@ -262,7 +352,7 @@
         <!-- Camera / mic / speaker picker -->
         <div class="relative">
           <button
-            @click="showDevices = !showDevices; if (showDevices) refreshDevices()"
+            @click="showDevices = !showDevices; openMenu = null; if (showDevices) refreshDevices()"
             title="Camera & audio settings"
             :class="[
               'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
@@ -292,6 +382,7 @@
                 :disabled="isScreenSharing"
                 class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-[#016a36] disabled:opacity-50"
               >
+                <option v-if="!cameras.length" value="" disabled>No camera found</option>
                 <option v-for="(d, i) in cameras" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Camera ${i + 1}` }}</option>
               </select>
             </label>
@@ -303,6 +394,7 @@
                 @change="changeMic($event.target.value)"
                 class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-[#016a36]"
               >
+                <option v-if="!microphones.length" value="" disabled>No microphone found</option>
                 <option v-for="(d, i) in microphones" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Microphone ${i + 1}` }}</option>
               </select>
             </label>
@@ -439,6 +531,7 @@ import { liveClassService } from '../../services/liveClassService';
 import { authService } from '../../services/authService';
 import { connectLiveClassSocket } from '../../services/liveClassSocket';
 import { generateAgoraUid } from '../../utils/agoraUid';
+import { createLocalTracks, describeDeviceIssues, describeDeviceProblem } from '../../utils/agoraDevices';
 import brandLogo from '@/assets/logo/RS_logo.png';
 import SaveRecordingModal from '../../components/modals/SaveRecordingModal.vue';
 
@@ -500,8 +593,15 @@ let isPublishing = false;
 const remoteUsers = ref([]);
 const isConnected = ref(false);
 const connectionStatus = ref('');
+const connectionFailed = ref(false);
 const audioEnabled = ref(true);
 const videoEnabled = ref(true);
+// Whether a real mic / camera track exists. Without one we're in view- or
+// listen-only mode and the controls try to re-acquire the device on click.
+const micAvailable = ref(false);
+const cameraAvailable = ref(false);
+const deviceNotice = ref('');
+let deviceIssues = { audio: null, video: null };
 const isScreenSharing = ref(false);
 
 let hasLeft = false;
@@ -614,7 +714,8 @@ onMounted(async () => {
   clockTimer = setInterval(updateClock, 1000);
 
   if (!targetClassId.value) {
-    connectionStatus.value = 'Error: No class ID';
+    connectionFailed.value = true;
+    connectionStatus.value = 'No class ID';
     return;
   }
 
@@ -651,7 +752,9 @@ onMounted(async () => {
     }, 8000);
   } catch (err) {
     console.error('Failed to initialize live stream:', err);
-    connectionStatus.value = `Error: ${err.response?.data?.error || err.message}`;
+    // Stop the spinner: a failed join must not look like "still connecting".
+    connectionFailed.value = true;
+    connectionStatus.value = err.response?.data?.error || err.message || 'Unknown error';
   }
 });
 
@@ -788,7 +891,19 @@ async function applyHandUpdate(status) {
     }
   } catch (err) {
     console.error('applyHandUpdate failed:', err);
+    await abortSpeaking(err);
   }
+}
+
+// We were put on stage (or tapped "speak") but have no usable microphone:
+// tell the user why and hand the stage slot back so the teacher isn't left
+// waiting on a silent speaker.
+async function abortSpeaking(err) {
+  if (!err?.userMessage) return false;
+  flash(err.userMessage, 8000);
+  handStatus.value = 'none';
+  try { await liveClassService.lowerHand(targetClassId.value); } catch (_) { /* noop */ }
+  return true;
 }
 
 // Teacher asked us to mute (soft — not a ban). Turn our mic off; the student
@@ -803,6 +918,52 @@ async function forceMuteSelf() {
 // ========================================================================
 // Agora
 // ========================================================================
+
+/**
+ * Open whichever of mic / camera we don't have yet, tolerating each one being
+ * missing, blocked, or busy independently (see utils/agoraDevices.js). Never
+ * throws for a device problem — it records it, updates the friendly notice, and
+ * leaves the corresponding control in "retry on click" state.
+ * `publish: false` lets the caller decide what to publish (co-host upgrade).
+ */
+async function acquireLocalTracks({ audio = !localAudioTrack, video = !localVideoTrack, publish = true } = {}) {
+  const res = await createLocalTracks({
+    audio,
+    video,
+    preferred: { audio: savedDevice('mic', 'microphoneId'), video: savedDevice('camera', 'cameraId') },
+  });
+
+  if (audio) {
+    deviceIssues.audio = res.audioIssue;
+    if (res.audioTrack) localAudioTrack = res.audioTrack;
+    audioEnabled.value = !!localAudioTrack;
+  }
+  if (video) {
+    deviceIssues.video = res.videoIssue;
+    if (res.videoTrack) localVideoTrack = res.videoTrack;
+    videoEnabled.value = !!localVideoTrack;
+  }
+  micAvailable.value = !!localAudioTrack;
+  cameraAvailable.value = !!localVideoTrack;
+
+  deviceNotice.value = describeDeviceIssues({ ...deviceIssues, presenter: isTeacher.value });
+
+  // A camera track can't go out alongside an active screen share; it's
+  // published when the share stops.
+  const fresh = [res.audioTrack, isScreenSharing.value ? null : res.videoTrack].filter(Boolean);
+  if (publish && fresh.length && agoraEngine) {
+    await agoraEngine.publish(fresh);
+    isPublishing = true;
+  }
+  // (Before the grid is on screen, initializeAgora plays it once connected.)
+  if (res.videoTrack && !isScreenSharing.value && isConnected.value) {
+    await nextTick();
+    res.videoTrack.play('local-player', { fit: 'cover' });
+  }
+  if (audio || video) refreshDevices();
+  return res;
+}
+
 async function initializeAgora(appId, channel, token, numericUid) {
   connectionStatus.value = 'Creating Agora client...';
   agoraEngine = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -818,16 +979,10 @@ async function initializeAgora(appId, channel, token, numericUid) {
   await agoraEngine.join(appId, channel, token, numericUid);
 
   if (canPublish.value) {
-    connectionStatus.value = 'Requesting camera access...';
-    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true, ...savedDevice('mic', 'microphoneId') });
-    localVideoTrack = await AgoraRTC.createCameraVideoTrack({
-      encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      ...savedDevice('camera', 'cameraId')
-    });
-
-    connectionStatus.value = 'Publishing media...';
-    await agoraEngine.publish([localAudioTrack, localVideoTrack]);
-    isPublishing = true;
+    connectionStatus.value = 'Requesting camera and microphone access...';
+    // A missing / blocked device must not block joining: whatever we can't
+    // open just leaves us view- or listen-only.
+    await acquireLocalTracks({ audio: true, video: true });
   }
 
   isConnected.value = true;
@@ -908,18 +1063,17 @@ async function upgradeToCoHost() {
     if (data.token) await agoraEngine.renewToken(data.token);
     rtcRole.value = data.role || 'co_host';
 
+    if (localAudioTrack) await localAudioTrack.setEnabled(true);
+    if (localVideoTrack) await localVideoTrack.setEnabled(true);
+    // Open whatever is still missing, without publishing yet: speaking needs a
+    // microphone, so if that's unavailable we bail out before going on stage.
+    await acquireLocalTracks({ publish: false });
+
     if (!localAudioTrack) {
-      localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true, ...savedDevice('mic', 'microphoneId') });
-    } else {
-      await localAudioTrack.setEnabled(true);
-    }
-    if (!localVideoTrack) {
-      localVideoTrack = await AgoraRTC.createCameraVideoTrack({
-        encoderConfig: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        ...savedDevice('camera', 'cameraId')
-      });
-    } else {
-      await localVideoTrack.setEnabled(true);
+      const problem = describeDeviceProblem('audio', deviceIssues.audio || 'other');
+      const e = new Error(`${problem} You can't speak without a microphone.`);
+      e.userMessage = e.message;
+      throw e;
     }
 
     const alreadyUp = agoraEngine.localTracks || [];
@@ -927,13 +1081,13 @@ async function upgradeToCoHost() {
     if (toPublish.length) await agoraEngine.publish(toPublish);
 
     audioEnabled.value = true;
-    videoEnabled.value = true;
-    refreshDevices();
+    videoEnabled.value = !!localVideoTrack;
     await nextTick();
-    localVideoTrack.play('local-player', { fit: 'cover' });
+    localVideoTrack?.play('local-player', { fit: 'cover' });
   } catch (err) {
     console.error('Co-host upgrade failed:', err);
     isPublishing = false;
+    if (err.userMessage) rtcRole.value = 'student'; // never got on stage
     throw err;
   }
 }
@@ -996,11 +1150,46 @@ async function refreshDevices() {
   }
 }
 
+// Chevron menus next to the mic / camera buttons (Meet-style).
+const openMenu = ref(null); // 'mic' | 'camera' | null
+
+function toggleDeviceMenu(kind) {
+  showDevices.value = false;
+  openMenu.value = openMenu.value === kind ? null : kind;
+  if (openMenu.value) refreshDevices();
+}
+
+async function pickDevice(kind, deviceId) {
+  openMenu.value = null;
+  await (kind === 'mic' ? changeMic(deviceId) : changeCamera(deviceId));
+}
+
+const closeMenuOnOutsidePointer = (e) => {
+  if (openMenu.value && !e.target.closest?.('[data-device-menu]')) openMenu.value = null;
+};
+const closeMenuOnEscape = (e) => { if (e.key === 'Escape') openMenu.value = null; };
+onMounted(() => {
+  document.addEventListener('pointerdown', closeMenuOnOutsidePointer);
+  document.addEventListener('keydown', closeMenuOnEscape);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeMenuOnOutsidePointer);
+  document.removeEventListener('keydown', closeMenuOnEscape);
+});
+
+// With a live track we hot-swap the device. With none (joined without that
+// device, e.g. camera plugged in later) the choice is remembered first, so
+// acquireLocalTracks() opens *that* device and publishes it.
 async function changeCamera(deviceId) {
   selectedCamera.value = deviceId;
   rememberDevice('camera', deviceId);
   try {
-    if (localVideoTrack) await localVideoTrack.setDevice(deviceId);
+    if (localVideoTrack) {
+      await localVideoTrack.setDevice(deviceId);
+    } else {
+      await acquireLocalTracks({ audio: false, video: true });
+      if (!localVideoTrack) flash(deviceNotice.value || 'Could not start that camera.', 5000);
+    }
   } catch (err) {
     flash('Could not switch camera. Is it in use by another app?', 4000);
     console.error('setDevice(camera) failed:', err);
@@ -1011,7 +1200,12 @@ async function changeMic(deviceId) {
   selectedMic.value = deviceId;
   rememberDevice('mic', deviceId);
   try {
-    if (localAudioTrack) await localAudioTrack.setDevice(deviceId);
+    if (localAudioTrack) {
+      await localAudioTrack.setDevice(deviceId);
+    } else {
+      await acquireLocalTracks({ audio: true, video: false });
+      if (!localAudioTrack) flash(deviceNotice.value || 'Could not start that microphone.', 5000);
+    }
   } catch (err) {
     flash('Could not switch microphone.', 4000);
     console.error('setDevice(mic) failed:', err);
@@ -1041,14 +1235,26 @@ AgoraRTC.onPlaybackDeviceChanged = () => refreshDevices();
 // ========================================================================
 // Controls
 // ========================================================================
+// With no device we're view/listen-only; clicking the control retries, so
+// plugging in a headset or unblocking the permission doesn't need a reload.
+const retryDevice = async (kind) => {
+  try {
+    await acquireLocalTracks({ audio: kind === 'audio', video: kind === 'video' });
+  } catch (err) {
+    console.error(`Retrying ${kind} failed:`, err);
+  }
+  if (deviceNotice.value) flash(deviceNotice.value, 7000);
+};
+
 const toggleAudio = async () => {
-  if (!localAudioTrack) return;
+  if (!localAudioTrack) return retryDevice('audio');
   audioEnabled.value = !audioEnabled.value;
   await localAudioTrack.setEnabled(audioEnabled.value);
 };
 
 const toggleVideo = async () => {
-  if (isScreenSharing.value || !localVideoTrack) return;
+  if (isScreenSharing.value) return;
+  if (!localVideoTrack) return retryDevice('video');
   videoEnabled.value = !videoEnabled.value;
   await localVideoTrack.setEnabled(videoEnabled.value);
 };
@@ -1093,6 +1299,8 @@ const handleStopScreenShare = async () => {
   isScreenSharing.value = false;
 };
 
+const reloadPage = () => window.location.reload();
+
 const showActionError = (err, fallback) => {
   console.error(fallback, err);
   flash(err?.response?.data?.error || fallback);
@@ -1126,7 +1334,7 @@ const startSpeaking = async () => {
     handStatus.value = 'speaking';
     await upgradeToCoHost();
   } catch (err) {
-    showActionError(err, 'Could not open your microphone. Try again.');
+    if (!(await abortSpeaking(err))) showActionError(err, 'Could not open your microphone. Try again.');
   } finally {
     handBusy.value = false;
   }
