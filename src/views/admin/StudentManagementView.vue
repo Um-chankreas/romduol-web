@@ -225,10 +225,24 @@ const formatDate = (d) => {
   try { return new Date(d).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }); }
   catch { return '—'; }
 };
-const subLabel = (s) => {
-  if (s.is_paid) return `until ${formatDate(s.paid_until)}`;
-  if (s.paid_until) return `expired ${formatDate(s.paid_until)}`;
-  return 'never';
+// Subscriptions are per course: "2/3 courses" = active / courses they're in.
+const subSummary = (s) => s.subscription_summary || { enrolled: 0, active: 0, active_courses: [] };
+const subBadge = (s) => {
+  const { active, enrolled } = subSummary(s);
+  return enrolled === 0 ? 'No courses' : `${active}/${enrolled} course${enrolled === 1 ? '' : 's'}`;
+};
+const subCourseNames = (s) => {
+  const list = subSummary(s).active_courses;
+  if (list.length === 0) return '';
+  return list.length <= 2
+    ? list.map((c) => c.title).join(', ')
+    : `${list.slice(0, 2).map((c) => c.title).join(', ')} +${list.length - 2}`;
+};
+const subTooltip = (s) => {
+  const list = subSummary(s).active_courses;
+  return list.length
+    ? list.map((c) => `${c.title} — until ${formatDate(c.expiry_date)}`).join('\n')
+    : 'No active course subscriptions — click to manage';
 };
 
 // ---- create / edit ----
@@ -268,18 +282,19 @@ const handleFormSubmit = async (payload) => {
 const subStudent = ref(null);
 const openSubscription = (s) => { subStudent.value = s; };
 const closeSubscription = () => { subStudent.value = null; };
-const onSubscriptionChanged = (updated) => {
+// `summary` = { enrolled, active, active_courses } straight from the modal.
+const onSubscriptionChanged = (summary) => {
   if (!subStudent.value) return;
   const idx = students.value.findIndex((s) => s.id === subStudent.value.id);
   if (idx !== -1) {
+    const isPaid = (summary?.active || 0) > 0;
     students.value[idx] = {
       ...students.value[idx],
-      paid_until: updated?.paid_until ?? null,
-      last_paid_at: updated?.last_paid_at ?? students.value[idx].last_paid_at,
-      is_paid: !!updated?.is_paid,
+      subscription_summary: summary,
+      is_paid: isPaid,
     };
-    if (paidFilter.value === 'paid' && !updated?.is_paid) removeRow(subStudent.value.id);
-    if (paidFilter.value === 'unpaid' && updated?.is_paid) removeRow(subStudent.value.id);
+    if (paidFilter.value === 'paid' && !isPaid) removeRow(subStudent.value.id);
+    if (paidFilter.value === 'unpaid' && isPaid) removeRow(subStudent.value.id);
   }
 };
 const removeRow = (id) => { students.value = students.value.filter((s) => s.id !== id); };
@@ -410,7 +425,7 @@ const restore = async (s) => {
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                 ]"
               >
-                {{ opt === 'paid' ? 'Active' : opt === 'unpaid' ? 'Inactive' : 'All' }}
+                {{ opt === 'paid' ? 'Any course active' : opt === 'unpaid' ? 'None active' : 'All' }}
               </button>
             </div>
 
@@ -482,16 +497,21 @@ const restore = async (s) => {
                       >
                         <span
                           :class="[
-                            'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide',
+                            'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide whitespace-nowrap',
                             student.is_paid
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                               : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                           ]"
+                          :title="subTooltip(student)"
                         >
-                          {{ student.is_paid ? 'Active' : 'Inactive' }}
+                          {{ subBadge(student) }}
                         </span>
-                        <span class="text-[11px] text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300">
-                          {{ subLabel(student) }}
+                        <span
+                          v-if="subCourseNames(student)"
+                          class="text-[11px] text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 max-w-[180px] truncate"
+                          :title="subTooltip(student)"
+                        >
+                          {{ subCourseNames(student) }}
                         </span>
                       </button>
                     </td>
@@ -686,7 +706,7 @@ const restore = async (s) => {
         <!-- ===================== COURSES TAB ===================== -->
         <template v-else-if="tab === 'courses'">
           <p class="text-sm text-slate-500 dark:text-slate-400">
-            When live classes are <strong>off</strong> for a course, no student can join its live sessions — even with an active subscription.
+            When live classes are <strong>off</strong> for a course, no student can join its live sessions — even with an active subscription for that course. When it's <strong>on</strong>, only students subscribed to that specific course can join (manage those from each student's subscription).
           </p>
 
           <div v-if="coursesError" class="p-4 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 text-sm flex justify-between items-center">

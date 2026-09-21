@@ -1,96 +1,118 @@
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-    @click.self="!busy && $emit('close')"
+    @click.self="!anyBusy && $emit('close')"
   >
-    <div class="w-full max-w-md rounded-[28px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div class="w-full max-w-xl rounded-[28px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-2xl max-h-[90vh] overflow-y-auto">
       <h2 class="text-lg font-bold text-slate-900 dark:text-white text-left">
-        Weekly subscription
+        Course subscriptions
       </h2>
       <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 text-left">
-        {{ student?.name }} — $5 / week to join every course's live classes.
+        {{ student?.name }} — $5 / week per course. A subscription only unlocks that course's live classes.
       </p>
 
       <div v-if="loading" class="py-8 text-center text-sm text-slate-500 dark:text-slate-400">Loading…</div>
 
       <template v-else>
-        <!-- Current status -->
-        <div
-          :class="[
-            'rounded-xl border px-4 py-3 mb-4 text-left',
-            sub && sub.is_paid
-              ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20'
-              : 'border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20'
-          ]"
-        >
-          <p class="text-sm font-bold" :class="sub && sub.is_paid ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'">
-            {{ sub && sub.is_paid ? 'Active' : 'Not subscribed' }}
-          </p>
-          <p class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-            <template v-if="sub && sub.paid_until">Access until {{ formatDate(sub.paid_until) }}</template>
-            <template v-else>No active access</template>
-            <template v-if="sub && sub.last_paid_at"> · last updated {{ formatDate(sub.last_paid_at) }}</template>
-          </p>
+        <p v-if="rows.length" class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3 text-left">
+          {{ activeCount }} of {{ rows.length }} course{{ rows.length === 1 ? '' : 's' }} active
+        </p>
+
+        <div v-if="rows.length === 0" class="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+          Not enrolled in any course yet.
         </div>
 
-        <!-- Extend -->
-        <div class="space-y-3 text-left">
-          <div>
-            <span class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Add weeks</span>
-            <div class="flex items-center gap-2">
-              <button
-                v-for="n in [1, 2, 4]"
-                :key="n"
-                @click="addWeeks(n)"
-                :disabled="busy"
-                class="px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold transition cursor-pointer disabled:opacity-40"
-              >
-                +{{ n }} week{{ n === 1 ? '' : 's' }}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <span class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Or set an expiry date</span>
-            <div class="flex items-center gap-2">
-              <input
-                type="date"
-                v-model="explicitDate"
-                :disabled="busy"
-                class="text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2.5 py-1.5"
-              />
-              <button
-                @click="setDate"
-                :disabled="busy || !explicitDate"
-                class="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 text-xs font-bold transition cursor-pointer disabled:opacity-40"
-              >
-                Set
-              </button>
-            </div>
-          </div>
-
-          <button
-            v-if="sub && sub.paid_until"
-            @click="revoke"
-            :disabled="busy"
-            class="text-xs font-bold text-red-600 hover:underline cursor-pointer disabled:opacity-40"
+        <!-- One subscription per course -->
+        <div class="space-y-3">
+          <div
+            v-for="row in rows"
+            :key="row.course.id"
+            :class="[
+              'rounded-2xl border p-4 text-left',
+              row.subscription.is_active
+                ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10'
+                : 'border-slate-200 dark:border-slate-800'
+            ]"
           >
-            Revoke access now
-          </button>
-        </div>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-900 dark:text-white truncate">
+                  {{ row.course.title || 'Course' }}
+                </p>
+                <p class="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  <template v-if="row.subscription.is_active">Access until {{ formatDate(row.subscription.expiry_date) }}</template>
+                  <template v-else-if="row.subscription.expiry_date">Expired {{ formatDate(row.subscription.expiry_date) }}</template>
+                  <template v-else>Not subscribed</template>
+                  <template v-if="row.subscription.last_updated"> · last updated {{ formatDate(row.subscription.last_updated) }}</template>
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-1 shrink-0">
+                <span
+                  :class="[
+                    'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide',
+                    row.subscription.is_active
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  ]"
+                >
+                  {{ row.subscription.is_active ? 'Active' : 'Inactive' }}
+                </span>
+                <span
+                  v-if="row.course.live_enabled === false"
+                  class="text-[10px] font-semibold text-red-500"
+                  title="Live classes are switched off for this course (Course Live Access tab) — nobody can join, even with a subscription."
+                >
+                  🚫 Live off for course
+                </span>
+              </div>
+            </div>
 
-        <!-- Enrolled courses (info only) -->
-        <div v-if="enrolledCourses.length" class="mt-5 pt-4 border-t border-slate-200/80 dark:border-slate-800 text-left">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Enrolled courses</p>
-          <div class="flex flex-wrap gap-1.5">
-            <span
-              v-for="ec in enrolledCourses"
-              :key="ec.course?.id"
-              class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300"
-            >
-              {{ ec.course?.title || 'Course' }}
-              <span v-if="ec.course?.live_enabled === false" class="text-red-500" title="Live classes off">🚫</span>
-            </span>
+            <div class="mt-3 space-y-3">
+              <div>
+                <span class="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">Add weeks</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-for="n in [1, 2, 4]"
+                    :key="n"
+                    @click="addWeeks(row, n)"
+                    :disabled="row.busy"
+                    class="px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold transition cursor-pointer disabled:opacity-40"
+                  >
+                    +{{ n }} week{{ n === 1 ? '' : 's' }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <span class="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">Or set an expiry date</span>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="date"
+                    v-model="row.date"
+                    :disabled="row.busy"
+                    class="text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2.5 py-1.5"
+                  />
+                  <button
+                    @click="setDate(row)"
+                    :disabled="row.busy || !row.date"
+                    class="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 text-xs font-bold transition cursor-pointer disabled:opacity-40"
+                  >
+                    Set
+                  </button>
+                </div>
+              </div>
+
+              <button
+                v-if="row.subscription.expiry_date"
+                @click="revoke(row)"
+                :disabled="row.busy"
+                class="text-xs font-bold text-red-600 hover:underline cursor-pointer disabled:opacity-40"
+              >
+                Revoke access
+              </button>
+
+              <p v-if="row.error" class="text-xs text-red-600">{{ row.error }}</p>
+            </div>
           </div>
         </div>
 
@@ -100,7 +122,7 @@
       <div class="flex items-center justify-end mt-6">
         <button
           @click="$emit('close')"
-          :disabled="busy"
+          :disabled="anyBusy"
           class="px-5 py-2 rounded-full bg-[#006A3A] hover:bg-[#005A31] text-white text-sm font-bold transition cursor-pointer disabled:opacity-50"
         >
           Done
@@ -111,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { studentService } from '../../services/studentService'
 
 const props = defineProps({
@@ -120,50 +142,69 @@ const props = defineProps({
 const emit = defineEmits(['close', 'changed'])
 
 const loading = ref(true)
-const busy = ref(false)
 const localError = ref('')
-const sub = ref(null)
-const enrolledCourses = ref([])
-const explicitDate = ref('')
+// [{ course, enrolled_at, subscription: { is_active, expiry_date, last_updated }, date, busy, error }]
+const rows = ref([])
+
+const activeCount = computed(() => rows.value.filter((r) => r.subscription.is_active).length)
+const anyBusy = computed(() => rows.value.some((r) => r.busy))
 
 const formatDate = (d) => {
   if (!d) return ''
   try { return new Date(d).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) }
   catch { return d }
 }
+const ymd = (d) => (d ? String(d).slice(0, 10) : '')
 
 const load = async () => {
   loading.value = true
   localError.value = ''
   try {
-    const { subscription, enrolled_courses } = await studentService.getStudent(props.student.id)
-    sub.value = subscription
-    enrolledCourses.value = enrolled_courses || []
-    explicitDate.value = subscription?.paid_until ? String(subscription.paid_until).slice(0, 10) : ''
+    const { enrolled_courses } = await studentService.getStudent(props.student.id)
+    rows.value = (enrolled_courses || []).map((ec) => ({
+      ...ec,
+      subscription: ec.subscription || { is_active: false, expiry_date: null, last_updated: null },
+      date: ymd(ec.subscription?.expiry_date),
+      busy: false,
+      error: '',
+    }))
   } catch (err) {
-    localError.value = err.response?.data?.error || err.message || 'Failed to load subscription.'
+    localError.value = err.response?.data?.error || err.message || 'Failed to load subscriptions.'
   } finally {
     loading.value = false
   }
 }
 onMounted(load)
 
-const apply = async (fn) => {
-  busy.value = true
-  localError.value = ''
+// What the student list shows in its Subscription column: "active / enrolled".
+const summary = () => ({
+  enrolled: rows.value.length,
+  active: activeCount.value,
+  active_courses: rows.value
+    .filter((r) => r.subscription.is_active)
+    .map((r) => ({ course_id: r.course.id, title: r.course.title || 'Course', expiry_date: r.subscription.expiry_date })),
+})
+
+const apply = async (row, fn) => {
+  row.busy = true
+  row.error = ''
   try {
     const updated = await fn()
-    sub.value = { ...sub.value, ...updated }
-    explicitDate.value = updated?.paid_until ? String(updated.paid_until).slice(0, 10) : ''
-    emit('changed', updated)
+    row.subscription = {
+      is_active: !!updated?.is_active,
+      expiry_date: updated?.expiry_date || null,
+      last_updated: updated?.last_updated || null,
+    }
+    row.date = ymd(updated?.expiry_date)
+    emit('changed', summary())
   } catch (err) {
-    localError.value = err.response?.data?.error || err.message || 'Could not update subscription.'
+    row.error = err.response?.data?.error || err.message || 'Could not update subscription.'
   } finally {
-    busy.value = false
+    row.busy = false
   }
 }
 
-const addWeeks = (n) => apply(() => studentService.addWeeks(props.student.id, n))
-const setDate = () => apply(() => studentService.setSubscription(props.student.id, { paid_until: explicitDate.value }))
-const revoke = () => apply(() => studentService.revokeSubscription(props.student.id))
+const addWeeks = (row, n) => apply(row, () => studentService.addWeeks(props.student.id, row.course.id, n))
+const setDate = (row) => apply(row, () => studentService.setCourseSubscription(props.student.id, row.course.id, { expiry_date: row.date }))
+const revoke = (row) => apply(row, () => studentService.revokeSubscription(props.student.id, row.course.id))
 </script>

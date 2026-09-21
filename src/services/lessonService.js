@@ -19,6 +19,10 @@ const videoContentType = (file) => {
     return VIDEO_MIME_BY_EXT[ext] || null
 }
 
+// Strict: only the formats uploadLessonVideo() can actually send (MP4, MOV,
+// WebM, M4V, MKV). isVideoFile() below also lets other video/* types through.
+export const isSupportedVideoFile = (file) => !!file && !!videoContentType(file)
+
 export const isVideoFile = (file) =>
     !!file && (file.type?.startsWith('video/') || !!videoContentType(file))
 

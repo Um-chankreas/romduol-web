@@ -10,17 +10,17 @@
       <span v-if="!isTeacher"> You will be returned shortly…</span>
     </div>
 
-    <!-- Camera / mic unavailable: joined view-only (or partial) instead -->
-    <div
-      v-if="deviceNotice"
-      role="status"
-      class="bg-amber-500/15 border-b border-amber-500/30 text-amber-200 text-xs md:text-sm px-4 py-2 flex items-start justify-between gap-3 shrink-0"
-    >
-      <span>{{ deviceNotice }}</span>
-      <button @click="deviceNotice = ''" class="text-amber-300 hover:text-white shrink-0 cursor-pointer" aria-label="Dismiss">✕</button>
-    </div>
+    <!-- Teacher: End class confirmation + optional OBS recording upload -->
+    <SaveRecordingModal
+      v-if="showEndClass"
+      :live-class-id="targetClassId"
+      :end-class-fn="performEndClass"
+      :recording-active="recState === 'recording'"
+      :stop-recording-fn="finishRecording"
+      @cancel="showEndClass = false"
+    />
 
-    <!-- Teacher: save the OBS recording after ending the class -->
+    <!-- Teacher: class ended elsewhere — just offer to save the OBS recording -->
     <SaveRecordingModal v-if="showSaveRecording" :live-class-id="targetClassId" />
 
     <!-- Toast -->
@@ -54,6 +54,11 @@
           </div>
 
           <div class="flex items-center space-x-2 shrink-0 bg-slate-900/70 backdrop-blur px-2 py-1 rounded-lg">
+            <span v-if="recState === 'recording'" role="status" class="text-[10px] font-semibold text-red-400 flex items-center space-x-1">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+              <span>Recording</span>
+              <span class="tabular-nums text-red-300">{{ recClock }}</span>
+            </span>
             <span v-if="isScreenSharing" class="text-[10px] font-semibold text-[#ffce04] flex items-center space-x-1">
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-[#ffce04] animate-pulse"></span>
               <span class="hidden sm:inline">Sharing</span>
@@ -74,6 +79,21 @@
                 {{ stage.raised_hands.length }}
               </span>
             </button>
+          </div>
+        </div>
+
+        <!-- Device / screen-share warnings: overlaid (no layout shift), shrink to a pill after a few seconds -->
+        <div class="absolute top-11 md:top-14 left-2 md:left-3 right-2 md:right-3 z-30 flex flex-col items-start gap-1.5 pointer-events-none [&>*]:pointer-events-auto">
+          <CollapsibleNotice :message="deviceNotice" label="Camera / mic" @dismiss="deviceNotice = ''" />
+          <CollapsibleNotice :message="shareWarning" label="Screen share" role="alert" @dismiss="shareWarning = ''" />
+          <div
+            v-if="recState === 'finishing' || recSaving"
+            role="status"
+            class="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-900/90 backdrop-blur px-3 py-1 text-[11px] text-slate-200 shadow-md"
+          >
+            <span class="inline-block h-3 w-3 rounded-full border-2 border-slate-500 border-t-transparent animate-spin"></span>
+            <span v-if="recSaving">{{ recSaving.stage }}<template v-if="recSaving.stage === STAGE_UPLOAD"> {{ recSaving.progress }}%</template></span>
+            <span v-else>Finishing recording…</span>
           </div>
         </div>
 
@@ -105,58 +125,65 @@
           </button>
         </div>
 
-        <!-- Responsive Grid Layout -->
-        <div
-          v-else
-          class="w-full h-full grid gap-2 md:gap-4 transition-all duration-300 auto-rows-fr"
-          :class="[
-            remoteUsers.length === 0 ? 'grid-cols-1' : '',
-            remoteUsers.length === 1 ? 'grid-cols-1 md:grid-cols-2' : '',
-            remoteUsers.length >= 2 ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : ''
-          ]"
-        >
-          <!-- Local Video Tile (only when publishing) -->
-          <div v-if="canPublish" class="relative w-full h-full min-h-[160px] bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border border-slate-800 shadow-xl group">
+        <!-- Main area: the presenter (whoever is sharing, else the teacher). It fills
+             the whole area; everyone else lives in the Participants panel. -->
+        <div v-else class="flex-1 min-h-0">
+          <!-- Us: presenting / teacher -->
+          <div v-if="mainKey === 'local'" :class="mainTileClass(talkingKeys.has('local'))">
             <div id="local-player" class="relative w-full h-full bg-slate-900"></div>
 
+            <!-- Presenting: the capture is sent to everyone but never played back
+                 here — it would show this page inside itself, endlessly. -->
             <div
-              v-if="!videoEnabled && !isScreenSharing"
-              class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-900"
+              v-if="isScreenSharing"
+              class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-900 p-4 text-center"
             >
-              <Avatar :name="userName" :src="userAvatar" />
-              <span class="text-xs md:text-sm font-medium text-slate-300">{{ userName }} (You)</span>
+              <div class="h-14 w-14 md:h-16 md:w-16 rounded-full bg-[#016a36]/20 ring-1 ring-[#016a36]/50 grid place-items-center text-[#34c27f]">
+                <svg class="w-7 h-7 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <p class="text-sm md:text-base font-semibold text-white">You're presenting</p>
+                <p class="text-xs text-slate-400 mt-0.5">Everyone can see your screen</p>
+              </div>
+              <button
+                type="button"
+                @click="toggleScreenShare"
+                class="px-4 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer"
+              >
+                Stop presenting
+              </button>
             </div>
 
-            <div class="absolute bottom-2 left-2 md:bottom-3 md:left-3 z-20 bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium text-white flex items-center space-x-1.5">
-              <span>{{ userName }} (You)</span>
-              <span v-if="isTeacher" class="text-amber-400 font-bold">• Teacher</span>
-              <span v-else-if="rtcRole === 'co_host'" class="text-[#34c27f] font-bold">• Speaker</span>
-              <span v-if="!audioEnabled" class="text-red-400">🔇</span>
+            <div v-if="!localHasVideo" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-900">
+              <Avatar :name="userName" :src="userAvatar" size="xl" :speaking="talkingKeys.has('local')" />
+            </div>
+
+            <div class="absolute bottom-2 left-2 md:bottom-3 md:left-3 z-20 max-w-[calc(100%-1rem)] bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium text-white flex items-center space-x-1.5">
+              <span class="truncate">{{ userName }} (You)</span>
+              <span v-if="isTeacher" class="text-amber-400 font-bold shrink-0">• Teacher</span>
+              <span v-if="!audioEnabled" class="text-red-400 shrink-0">🔇</span>
             </div>
           </div>
 
-          <!-- Remote Video Tiles -->
-          <div
-            v-for="user in remoteUsers"
-            :key="user.uid"
-            class="relative w-full h-full min-h-[160px] bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border border-slate-800 shadow-xl"
-          >
-            <div :id="`remote-player-${user.uid}`" class="relative w-full h-full bg-slate-900"></div>
+          <!-- The teacher, seen from a student -->
+          <div v-else-if="mainKey !== null" :key="mainKey" :class="mainTileClass(talkingKeys.has(mainKey))">
+            <div :id="`remote-player-${mainKey}`" class="relative w-full h-full bg-slate-900"></div>
 
-            <div v-if="!user.hasVideo || !user.videoReady" class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-900">
-              <Avatar :name="resolveName(user.uid)" :src="avatarByUid(user.uid)" />
-              <span class="text-xs md:text-sm font-medium text-slate-300">{{ resolveName(user.uid) }}</span>
+            <div v-if="!mainRemote?.hasVideo || !mainRemote?.videoReady" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-900">
+              <Avatar :name="resolveName(mainKey)" :src="avatarByUid(mainKey)" size="xl" :speaking="talkingKeys.has(mainKey)" />
             </div>
 
-            <div class="absolute bottom-2 left-2 md:bottom-3 md:left-3 z-20 bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium text-white">
-              {{ resolveName(user.uid) }}
+            <div class="absolute bottom-2 left-2 md:bottom-3 md:left-3 z-20 max-w-[calc(100%-1rem)] truncate bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium text-white">
+              {{ resolveName(mainKey) }}<span class="text-amber-400 font-bold"> • Teacher</span>
             </div>
           </div>
 
-          <!-- Placeholder when subscriber and nobody is publishing -->
+          <!-- Nobody presenting yet -->
           <div
-            v-if="!canPublish && remoteUsers.length === 0"
-            class="relative w-full h-full min-h-[160px] bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-sm"
+            v-else
+            class="w-full h-full bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-sm"
           >
             <div class="w-8 h-8 border-4 border-slate-700 border-t-slate-400 rounded-full animate-spin mb-3"></div>
             Waiting for the teacher's stream…
@@ -178,24 +205,15 @@
         </div>
       </div>
 
-      <!-- Right Sidebar (Desktop) -->
-      <aside class="hidden lg:flex w-72 bg-slate-800/90 border border-slate-700/50 rounded-2xl flex-col overflow-hidden shrink-0">
-        <div class="p-4 border-b border-slate-700/50 bg-slate-800 flex justify-between items-center">
-          <h2 class="text-white font-bold text-sm">Students</h2>
-          <span class="bg-slate-700 text-slate-200 text-xs px-2 py-0.5 rounded-full font-semibold">{{ participants.length }}</span>
-        </div>
-        <div class="flex-1 overflow-y-auto p-3 space-y-2">
-          <ParticipantRow
-            v-for="p in participants"
-            :key="p.user_id"
-            :participant="p"
-            :is-self="p.user_id === currentUser?.id"
-            :can-manage="isTeacher"
-            @invite="invite(p.user_id)"
-            @mute="mute(p.user_id)"
-            @remove="remove(p.user_id)"
-          />
-        </div>
+      <!-- Right Sidebar (Desktop). Sized to its rows (max = the video area), then
+           the list scrolls, so a short class doesn't leave a tall empty panel. -->
+      <aside class="hidden lg:flex w-44 self-start max-h-full bg-slate-800/90 border border-slate-700/50 rounded-2xl flex-col overflow-hidden shrink-0 shadow-xl">
+        <ParticipantsPanel
+          :rows="participantRows"
+          :can-manage="isTeacher"
+          @invite="invite"
+          @mute="mute"
+        />
       </aside>
 
       <!-- Bottom Sheet Drawer (Mobile) -->
@@ -205,22 +223,18 @@
         @click.self="showMobileDrawer = false"
       >
         <div class="bg-slate-800 border-t border-slate-700 rounded-t-2xl max-h-[65vh] flex flex-col overflow-hidden">
-          <div class="p-4 border-b border-slate-700/50 flex justify-between items-center">
-            <h2 class="text-white font-bold text-sm">Students ({{ participants.length }})</h2>
-            <button @click="showMobileDrawer = false" class="text-slate-400 hover:text-white text-lg">✕</button>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4 space-y-2">
-            <ParticipantRow
-              v-for="p in participants"
-              :key="p.user_id"
-              :participant="p"
-              :is-self="p.user_id === currentUser?.id"
-              :can-manage="isTeacher"
-              @invite="invite(p.user_id)"
-              @mute="mute(p.user_id)"
-              @remove="remove(p.user_id)"
-            />
-          </div>
+          <ParticipantsPanel
+            :rows="participantRows"
+            :can-manage="isTeacher"
+            :show-thumbs="false"
+            :columns="3"
+            @invite="invite"
+            @mute="mute"
+          >
+            <template #actions>
+              <button @click="showMobileDrawer = false" class="text-slate-400 hover:text-white text-lg cursor-pointer" aria-label="Close">✕</button>
+            </template>
+          </ParticipantsPanel>
         </div>
       </div>
 
@@ -337,18 +351,32 @@
         </div>
         </div>
 
-        <button
-          v-if="isTeacher"
-          @click="toggleScreenShare"
-          :class="[
-            'hidden sm:block p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
-            isScreenSharing ? 'bg-[#016a36] text-white hover:bg-[#015a2d] ring-4 ring-[#016a36]/30' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
-          ]"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        </button>
+        <div v-if="isTeacher" class="relative group hidden sm:block">
+          <button
+            @click="toggleScreenShare"
+            :aria-label="isScreenSharing ? 'Stop sharing screen' : 'Share screen'"
+            aria-describedby="share-screen-tip"
+            :class="[
+              'block p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
+              isScreenSharing ? 'bg-[#016a36] text-white hover:bg-[#015a2d] ring-4 ring-[#016a36]/30' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+            ]"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <div
+            id="share-screen-tip"
+            role="tooltip"
+            class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-60 rounded-lg bg-slate-800 border border-slate-600 px-3 py-2 text-[11px] leading-snug text-slate-200 shadow-xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-50"
+          >
+            <template v-if="isScreenSharing">Stop sharing your screen</template>
+            <template v-else>
+              <span class="font-semibold text-white">Share screen</span><br />
+              Tip: share a specific window (like your slides or document) instead of your whole screen — it keeps students focused and avoids showing anything private.
+            </template>
+          </div>
+        </div>
         <!-- Camera / mic / speaker picker -->
         <div class="relative">
           <button
@@ -412,6 +440,23 @@
           </div>
         </div>
       </template>
+
+      <!-- Teacher: record in the browser (no OBS needed) -->
+      <button
+        v-if="isTeacher"
+        @click="recState === 'recording' ? stopRecording() : startRecording()"
+        :disabled="recState === 'starting' || recState === 'finishing' || !!recSaving"
+        :title="recState === 'recording' ? 'Stop recording' : 'Record this class in your browser'"
+        :aria-label="recState === 'recording' ? 'Stop recording' : 'Record'"
+        :class="[
+          'hidden sm:flex items-center gap-2 px-3.5 md:px-4 py-2.5 md:py-3 rounded-full text-xs font-semibold transition-all duration-200 shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed',
+          recState === 'recording' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+        ]"
+      >
+        <span v-if="recState === 'recording'" class="inline-block w-2.5 h-2.5 rounded-sm bg-white"></span>
+        <span v-else class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>
+        {{ recState === 'recording' ? 'Stop' : 'Record' }}
+      </button>
 
       <!-- Teacher: copy the OBS recorder URL -->
       <button
@@ -524,16 +569,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, h } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import { liveClassService } from '../../services/liveClassService';
 import { authService } from '../../services/authService';
 import { connectLiveClassSocket } from '../../services/liveClassSocket';
 import { generateAgoraUid } from '../../utils/agoraUid';
+import { createBrowserRecorder, isRecordingSupported } from '../../utils/browserRecorder';
+import { saveRecordingToCourse, STAGE_UPLOAD } from '../../utils/saveRecording';
 import { createLocalTracks, describeDeviceIssues, describeDeviceProblem } from '../../utils/agoraDevices';
 import brandLogo from '@/assets/logo/RS_logo.png';
 import SaveRecordingModal from '../../components/modals/SaveRecordingModal.vue';
+import CollapsibleNotice from '../../components/live/CollapsibleNotice.vue';
+import Avatar from '../../components/live/LiveAvatar.vue';
+import ParticipantsPanel from '../../components/live/ParticipantsPanel.vue';
 
 const props = defineProps({
   liveClassId: { type: String, default: '' }
@@ -564,6 +614,7 @@ const showMobileDrawer = ref(false);
 const linkCopied = ref(false);
 const recorderCopied = ref(false);
 const showSaveRecording = ref(false);
+const showEndClass = ref(false);
 const currentTime = ref('');
 const toast = ref('');
 let toastTimer = null;
@@ -611,6 +662,93 @@ const updateClock = () => {
   currentTime.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+// ---- main area -----------------------------------------------------------
+// One big tile: whoever is presenting. That's us if we're sharing or we're the
+// teacher, otherwise the teacher's stream. Everyone else is a row in the
+// Participants panel, not a tile. Keys: 'local' or an Agora uid; null = nobody yet.
+const uidOf = (p) => p.agora_uid ?? generateAgoraUid(p.user_id);
+const teacherUids = computed(() => new Set(participants.value.filter(p => p.role === 'teacher').map(uidOf)));
+const localHasVideo = computed(() => canPublish.value && (isScreenSharing.value || videoEnabled.value));
+
+const mainKey = computed(() => {
+  if (canPublish.value && (isScreenSharing.value || isTeacher.value)) return 'local';
+  return remoteUsers.value.find(u => teacherUids.value.has(u.uid))?.uid ?? null;
+});
+const mainRemote = computed(() => remoteUsers.value.find(u => u.uid === mainKey.value));
+const isAlone = computed(() => participants.value.length <= 1 && remoteUsers.value.length === 0);
+
+const TALKING_RING = 'border-emerald-400 shadow-[0_0_0_2px_rgba(52,211,153,0.55),0_0_20px_rgba(52,211,153,0.4)]';
+const mainTileClass = (talking) => [
+  'relative w-full h-full min-w-0 bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border shadow-xl transition-shadow duration-150',
+  talking ? TALKING_RING : isAlone.value ? 'border-transparent' : 'border-slate-800',
+];
+
+// ---- attaching video to the page ----------------------------------------
+// An Agora player is bound to one element. The presenter plays into the main
+// tile; anyone else on camera plays into their row's thumbnail. When that
+// element changes (new row, presenter changes) the video is attached again.
+const attached = new Map();   // 'local' | uid -> { el, track }
+const remoteVideoTarget = (uid) => (uid === mainKey.value ? `remote-player-${uid}` : `thumb-${uid}`);
+const localVideoTarget = () => (mainKey.value === 'local' ? 'local-player' : 'thumb-local');
+
+function attachVideo(key, track, targetId) {
+  const el = track && document.getElementById(targetId);
+  if (!el) return;
+  const cur = attached.get(key);
+  if (cur && cur.el === el && cur.track === track && el.querySelector('video')) return;
+  track.play(el, { fit: 'cover' });
+  attached.set(key, { el, track });
+}
+
+async function syncVideos() {
+  await nextTick();
+  for (const u of agoraEngine?.remoteUsers || []) {
+    if (u.videoTrack) attachVideo(u.uid, u.videoTrack, remoteVideoTarget(u.uid));
+  }
+  if (localVideoTrack && !isScreenSharing.value) attachVideo('local', localVideoTrack, localVideoTarget());
+}
+
+// Re-attach whenever something that decides *where* a video goes changes.
+watch(
+  () => [
+    mainKey.value,
+    isConnected.value,
+    videoEnabled.value,
+    isScreenSharing.value,
+    participants.value.map(p => p.user_id).join(),
+    remoteUsers.value.map(u => `${u.uid}:${u.hasVideo}`).join(),
+  ],
+  () => { if (isConnected.value) syncVideos(); },
+  { flush: 'post' },
+);
+
+// ---- who is talking ------------------------------------------------------
+// Real-time levels straight from the local / remote audio tracks
+// (getVolumeLevel(), 0–1). The client's "volume-indicator" event only fires
+// every 2 s, which is too laggy for a ring that should follow the voice.
+// Keys: 'local' for us, the Agora uid for everyone else.
+const TALK_LEVEL = 0.06;      // above the noise floor of a quiet room
+const TALK_HOLD_MS = 500;     // keep the ring through short pauses — no flicker
+const SAMPLE_MS = 150;
+const talkingKeys = ref(new Set());
+const lastLoud = new Map();
+let levelTimer = null;
+
+function sampleVolumes() {
+  const now = performance.now();
+  const talking = new Set();
+  const check = (key, level) => {
+    if (level >= TALK_LEVEL) lastLoud.set(key, now);
+    if (now - (lastLoud.get(key) ?? -Infinity) < TALK_HOLD_MS) talking.add(key);
+  };
+  check('local', localAudioTrack && audioEnabled.value ? localAudioTrack.getVolumeLevel() : 0);
+  for (const u of agoraEngine?.remoteUsers || []) {
+    if (u.audioTrack) check(u.uid, u.audioTrack.getVolumeLevel());
+  }
+  const prev = talkingKeys.value;
+  if (talking.size !== prev.size || [...talking].some(k => !prev.has(k))) talkingKeys.value = talking;
+}
+
 // ---- name / avatar resolution for remote tiles --------------------------
 const infoByUid = computed(() => {
   const map = {};
@@ -624,87 +762,33 @@ const infoByUid = computed(() => {
 });
 const resolveName = (uid) => infoByUid.value[uid]?.name || `User ${uid}`;
 const avatarByUid = (uid) => infoByUid.value[uid]?.avatar_url || '';
-const initialOf = (name) => (name || '').trim().charAt(0).toUpperCase();
 
-// ---- avatar / initials fallback tile ------------------------------------
-const Avatar = {
-  props: {
-    name: { type: String, default: '' },
-    src: { type: String, default: '' },
-    size: { type: String, default: 'lg' },   // 'sm' | 'lg'
-  },
-  setup(p) {
-    const broken = ref(false);
-    return () => {
-      const dims = p.size === 'sm'
-        ? 'w-10 h-10 md:w-12 md:h-12 text-sm md:text-base'
-        : 'w-16 h-16 md:w-24 md:h-24 text-2xl md:text-4xl';
-      const shell = `${dims} rounded-full border-2 border-[#016a36] shadow-lg shrink-0`;
-      if (p.src && !broken.value) {
-        return h('img', {
-          src: p.src, alt: p.name,
-          class: `${shell} object-cover`,
-          onError: () => { broken.value = true; },
-        });
-      }
-      const letter = initialOf(p.name);
-      return h('div', {
-        class: `${shell} bg-[#016a36] text-white font-bold flex items-center justify-center select-none overflow-hidden`,
-      }, letter || h('img', { src: brandLogo, alt: '', class: 'w-1/2 h-1/2 object-contain' }));
+// ---- participants panel rows ---------------------------------------------
+// What the panel shows per person: whether their mic is open, a camera
+// thumbnail if they're on camera, and the raise-hand queue.
+const participantRows = computed(() => {
+  const remoteByUid = new Map(remoteUsers.value.map(u => [u.uid, u]));
+  const queue = stage.value.raised_hands.map(r => r.user_id);
+  return participants.value.map((p) => {
+    const isSelf = p.user_id === currentUser?.id;
+    const uid = uidOf(p);
+    const remote = remoteByUid.get(uid);
+    const queuePos = queue.indexOf(p.user_id);
+    const key = isSelf ? 'local' : uid;
+    return {
+      ...p,
+      isSelf,
+      // Real mic state: open right now. A remote mic that's muted (or never
+      // enabled) isn't published, so hasAudio is false for them.
+      mic: isSelf ? (canPublish.value && micAvailable.value && audioEnabled.value) : (!!remote?.hasAudio && !mutedAsked.value.has(p.user_id)),
+      // Camera thumbnail in the row — except the presenter, who has the main tile.
+      thumbId: `thumb-${isSelf ? 'local' : uid}`,
+      videoOn: key !== mainKey.value && (isSelf ? (canPublish.value && videoEnabled.value) : !!(remote?.hasVideo && remote.videoReady)),
+      handRaised: !!p.hand_raised || queuePos !== -1,
+      handOrder: queuePos === -1 ? Infinity : queuePos,
     };
-  },
-};
-
-// ---- inline participant row component ------------------------------------
-const ParticipantRow = {
-  props: {
-    participant: { type: Object, required: true },
-    isSelf: Boolean,
-    canManage: Boolean,
-  },
-  emits: ['mute', 'remove', 'invite'],
-  setup(p, { emit: e }) {
-    return () => {
-      const part = p.participant;
-      const isT = part.role === 'teacher';
-      const badges = [];
-      if (part.hand_raised) badges.push(h('span', { class: 'text-amber-400 text-sm leading-none', title: 'Hand raised' }, '✋'));
-      if (part.speaking) badges.push(h('span', { class: 'text-[#34c27f] text-sm leading-none', title: 'Speaking' }, '🎤'));
-      if (isT) badges.push(h('span', { class: 'text-amber-400 font-bold text-[10px] uppercase bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20' }, 'Teacher'));
-
-      const controls = [];
-      if (p.canManage && !isT && part.hand_raised && !part.speaking) {
-        controls.push(h('button', {
-          class: 'text-[10px] font-bold px-2 py-1 rounded-md bg-[#016a36] hover:bg-[#015a2d] text-white cursor-pointer',
-          onClick: () => e('invite'),
-        }, 'Invite to speak'));
-      }
-      if (p.canManage && !isT && part.speaking) {
-        controls.push(h('button', {
-          class: 'text-[10px] font-bold px-2 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white cursor-pointer',
-          onClick: () => e('mute'),
-        }, 'Mute'));
-      }
-      if (p.canManage && !isT && (part.speaking || part.hand_raised)) {
-        controls.push(h('button', {
-          class: 'text-[10px] font-bold px-2 py-1 rounded-md bg-slate-600 hover:bg-red-600 text-white cursor-pointer',
-          onClick: () => e('remove'),
-        }, part.speaking ? 'Remove' : 'Lower'));
-      }
-
-      return h('div', { class: 'p-2.5 bg-slate-700/50 hover:bg-slate-700 rounded-xl text-white text-xs flex flex-col gap-2 transition' }, [
-        h('div', { class: 'flex items-center justify-between gap-2' }, [
-          h('div', { class: 'flex items-center space-x-2 truncate' }, [
-            h('span', {}, isT ? '👨‍🏫' : '👨‍🎓'),
-            h('span', { class: 'truncate font-medium' }, part.name + (p.isSelf ? ' (You)' : '')),
-          ]),
-          h('div', { class: 'flex items-center gap-1.5 shrink-0' }, badges),
-        ]),
-        controls.length ? h('div', { class: 'flex gap-2' }, controls) : null,
-      ]);
-    };
-  },
-};
+  });
+});
 
 // ========================================================================
 // Lifecycle
@@ -772,6 +856,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', warnBeforeClose);
   clearInterval(clockTimer);
   clearInterval(pollTimer);
+  clearInterval(levelTimer);
+  stopRecordingTimers();
+  recorder?.dispose();
   leaveLiveClass();
 });
 
@@ -955,21 +1042,22 @@ async function acquireLocalTracks({ audio = !localAudioTrack, video = !localVide
     await agoraEngine.publish(fresh);
     isPublishing = true;
   }
-  // (Before the grid is on screen, initializeAgora plays it once connected.)
-  if (res.videoTrack && !isScreenSharing.value && isConnected.value) {
-    await nextTick();
-    res.videoTrack.play('local-player', { fit: 'cover' });
-  }
+  // (Before the stage is on screen, initializeAgora attaches it once connected.)
+  if (res.videoTrack && !isScreenSharing.value && isConnected.value) await syncVideos();
   if (audio || video) refreshDevices();
   return res;
 }
 
 async function initializeAgora(appId, channel, token, numericUid) {
   connectionStatus.value = 'Creating Agora client...';
-  agoraEngine = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+  // Must match the mobile app's channel profile: Web "live" = Native
+  // LiveBroadcasting (the app joins as LiveBroadcasting; Web "rtc" is the
+  // Communication profile). Publishers are "host", everyone else "audience".
+  agoraEngine = AgoraRTC.createClient({ mode: 'live', codec: 'vp8', role: canPublish.value ? 'host' : 'audience' });
 
   agoraEngine.on('user-published', handleUserPublished);
   agoraEngine.on('user-unpublished', handleUserUnpublished);
+  agoraEngine.on('user-info-updated', handleUserInfoUpdated);
   agoraEngine.on('user-left', (user) => {
     remoteUsers.value = remoteUsers.value.filter(u => u.uid !== user.uid);
   });
@@ -986,9 +1074,10 @@ async function initializeAgora(appId, channel, token, numericUid) {
   }
 
   isConnected.value = true;
+  clearInterval(levelTimer);
+  levelTimer = setInterval(sampleVolumes, SAMPLE_MS);
   if (canPublish.value) refreshDevices();
-  await nextTick();
-  if (localVideoTrack) localVideoTrack.play('local-player', { fit: 'cover' });
+  await syncVideos();
 }
 
 async function renewAgoraToken() {
@@ -1017,13 +1106,15 @@ const handleUserPublished = async (user, mediaType) => {
   if (mediaType === 'video') {
     upsertRemote(user.uid, { hasVideo: true, videoReady: false });
     await nextTick();
-    await user.videoTrack.play(`remote-player-${user.uid}`, { fit: 'cover' });
+    attachVideo(user.uid, user.videoTrack, remoteVideoTarget(user.uid));
     upsertRemote(user.uid, { videoReady: true });
   }
 
   if (mediaType === 'audio') {
     // Keep an avatar tile for a camera-off participant who still has audio.
     upsertRemote(user.uid, { hasAudio: true });
+    const who = participants.value.find(p => uidOf(p) === user.uid);
+    if (who) setMutedAsked(who.user_id, false);   // they unmuted: show it as open again
     user.audioTrack.play();
     applySpeaker(user);
   }
@@ -1049,6 +1140,32 @@ const handleUserUnpublished = (user, mediaType) => {
   }
 };
 
+// A native (mobile) app can mute or disable its camera / mic *without*
+// unpublishing — muteLocalVideoStream, enableLocalVideo(false). The SDK reports
+// that as user-info-updated and only derives user-unpublished from it when its
+// own bookkeeping says the state changed. Handle it directly too, so a tile can
+// never be left showing the last frame of a camera that is off. Both paths end in
+// the same idempotent handlers.
+const MEDIA_OFF = { 'mute-video': 'video', 'disable-local-video': 'video', 'mute-audio': 'audio', 'disable-local-audio': 'audio' };
+const MEDIA_ON = { 'unmute-video': 'video', 'enable-local-video': 'video', 'unmute-audio': 'audio', 'enable-local-audio': 'audio' };
+
+const handleUserInfoUpdated = (uid, msg) => {
+  console.debug('[live] user-info-updated', uid, msg);
+  if (MEDIA_OFF[msg]) {
+    handleUserUnpublished({ uid }, MEDIA_OFF[msg]);
+    return;
+  }
+  const kind = MEDIA_ON[msg];
+  if (!kind) return;
+  // Back on: if the SDK says they're sending again but we haven't picked it up
+  // (no user-published arrived), subscribe now.
+  const sdkUser = agoraEngine?.remoteUsers.find(u => u.uid === uid);
+  const mine = remoteUsers.value.find(u => u.uid === uid);
+  const sending = kind === 'video' ? sdkUser?.hasVideo : sdkUser?.hasAudio;
+  const known = kind === 'video' ? mine?.hasVideo : mine?.hasAudio;
+  if (sdkUser && sending && !known) handleUserPublished(sdkUser, kind);
+};
+
 // ---- co-host upgrade / downgrade (student) ------------------------------
 // Tracks are kept alive across stop/start (setEnabled toggles the camera)
 // so re-opening voice never re-acquires hardware — the part that fails on
@@ -1062,6 +1179,7 @@ async function upgradeToCoHost() {
     const data = res.data || res;
     if (data.token) await agoraEngine.renewToken(data.token);
     rtcRole.value = data.role || 'co_host';
+    await agoraEngine.setClientRole('host');   // live mode: only a host can publish
 
     if (localAudioTrack) await localAudioTrack.setEnabled(true);
     if (localVideoTrack) await localVideoTrack.setEnabled(true);
@@ -1082,8 +1200,7 @@ async function upgradeToCoHost() {
 
     audioEnabled.value = true;
     videoEnabled.value = !!localVideoTrack;
-    await nextTick();
-    localVideoTrack?.play('local-player', { fit: 'cover' });
+    await syncVideos();
   } catch (err) {
     console.error('Co-host upgrade failed:', err);
     isPublishing = false;
@@ -1098,7 +1215,9 @@ async function downgradeFromCoHost() {
     if (published.length) await agoraEngine.unpublish(published);
     await localVideoTrack?.setEnabled(false);
     await localAudioTrack?.setEnabled(false);
+    await agoraEngine.setClientRole('audience');   // after unpublish, as the SDK requires
     isScreenSharing.value = false;
+    shareWarning.value = '';
     rtcRole.value = 'student';
   } catch (err) {
     console.error('Co-host downgrade failed:', err);
@@ -1259,44 +1378,116 @@ const toggleVideo = async () => {
   await localVideoTrack.setEnabled(videoEnabled.value);
 };
 
+// Hints for the browser's share picker (Chrome / Edge 107+; other browsers
+// ignore them, and the user can still pick anything). Pre-selecting "Window"
+// steers teachers away from "Entire screen", and hiding this tab from the
+// picker stops them sharing the live class itself.
+const SCREEN_SHARE_HINTS = {
+  displaySurface: 'window',
+  selfBrowserSurface: 'exclude',
+  surfaceSwitching: 'include',
+};
+
+// Warning shown while a share may show more than intended.
+const shareWarning = ref('');
+
+// The browser can't tell us *which* tab/window/screen was picked, only its
+// type (track settings' displaySurface). So: an entire screen shows everything;
+// a tab can only be this page on browsers that can't hide it from the picker.
+// A window share isn't flagged — it may just as well be the slides.
+function describeShareRisk(track) {
+  const surface = track.getMediaStreamTrack?.().getSettings?.().displaySurface;
+  if (surface === 'monitor') {
+    return "You're sharing your entire screen — students will see everything on it, including this live class window and any notifications. Consider sharing a specific window or tab instead.";
+  }
+  const canHideThisTab = !!navigator.mediaDevices?.getSupportedConstraints?.().selfBrowserSurface;
+  if (surface === 'browser' && !canHideThisTab) {
+    return "You're sharing a browser tab. If it's the tab with this live class, students will only see the class itself. Consider sharing a different window or tab instead.";
+  }
+  return '';
+}
+
+// Every track the capture produced. createScreenVideoTrack(…, 'auto') returns
+// [video, audio] when the user also shares tab / system audio — the audio one
+// keeps the browser's "sharing" indicator alive if it isn't closed too.
+const screenTracks = () => (screenTrack ? (Array.isArray(screenTrack) ? screenTrack : [screenTrack]) : []);
+
+function releaseScreenTracks() {
+  for (const t of screenTracks()) {
+    try { t.close(); } catch (err) { console.warn('closing a screen track failed:', err); }
+  }
+  screenTrack = null;
+}
+
 const toggleScreenShare = async () => {
+  if (isScreenSharing.value) return handleStopScreenShare();
+  let cameraUnpublished = false;
   try {
-    if (!isScreenSharing.value) {
-      screenTrack = await AgoraRTC.createScreenVideoTrack({
-        encoderConfig: '1080p_1',
-        optimizationMode: 'detail',
-      }, 'auto');
+    screenTrack = await AgoraRTC.createScreenVideoTrack({
+      encoderConfig: '1080p_1',
+      optimizationMode: 'detail',
+      ...SCREEN_SHARE_HINTS,
+    }, 'auto');
+    const [track] = screenTracks();
 
-      const track = Array.isArray(screenTrack) ? screenTrack[0] : screenTrack;
-      if (localVideoTrack) await agoraEngine.unpublish(localVideoTrack);
-      await agoraEngine.publish(track);
-
-      await nextTick();
-      track.play('local-player', { fit: 'cover' });
-      isScreenSharing.value = true;
-      track.on('track-ended', handleStopScreenShare);
-    } else {
-      await handleStopScreenShare();
+    if (localVideoTrack && videoEnabled.value) {
+      await agoraEngine.unpublish(localVideoTrack);
+      cameraUnpublished = true;
     }
+    await agoraEngine.publish(track);
+
+    // The screen track is deliberately not played back locally (see the
+    // "You're presenting" tile). Stop the camera preview so it doesn't sit
+    // under it; handleStopScreenShare() plays it again.
+    localVideoTrack?.stop();
+    attached.delete('local');   // its player is gone; attach again when sharing stops
+    isScreenSharing.value = true;
+    shareWarning.value = describeShareRisk(track);
+    // The browser's own "Stop sharing" ends every track of the capture.
+    screenTracks().forEach(t => t.on('track-ended', handleStopScreenShare));
   } catch (err) {
-    console.error('Failed to toggle screen share:', err);
+    console.error('Failed to start screen share:', err);
+    // Don't leave a half-started capture running (picker cancelled = nothing to release).
+    releaseScreenTracks();
+    if (cameraUnpublished && localVideoTrack && videoEnabled.value) {
+      try { await agoraEngine.publish(localVideoTrack); } catch (e) { console.error('restoring the camera failed:', e); }
+    }
   }
 };
 
+let stoppingShare = false;
 const handleStopScreenShare = async () => {
-  if (!isScreenSharing.value) return;
-  if (screenTrack) {
-    const track = Array.isArray(screenTrack) ? screenTrack[0] : screenTrack;
-    await agoraEngine.unpublish(track);
-    track.close();
-    screenTrack = null;
+  if (stoppingShare || (!isScreenSharing.value && !screenTrack)) return;
+  stoppingShare = true;
+  try {
+    // 1. Stop sending it. Whatever happens here, the capture itself must still
+    //    be released below, so an error is logged, not allowed to abort.
+    const [video] = screenTracks();
+    try {
+      if (video && agoraEngine) await agoraEngine.unpublish(video);
+    } catch (err) {
+      console.warn('unpublishing the screen track failed:', err);
+    }
+    // 2. Stop the capture — every track — so nothing keeps running and the
+    //    browser's "sharing" indicator goes away.
+    releaseScreenTracks();
+    // 3. Only now, with the capture really stopped, reset the UI. This does not
+    //    depend on the camera coming back (step 4 can fail on its own).
+    isScreenSharing.value = false;
+    shareWarning.value = '';
+    // 4. Bring the camera back if it was on.
+    if (localVideoTrack && videoEnabled.value) {
+      try {
+        await agoraEngine.publish(localVideoTrack);
+      } catch (err) {
+        console.error('restoring the camera after sharing failed:', err);
+        flash('Screen sharing stopped, but your camera could not be restored. Tap the camera button to retry.', 6000);
+      }
+    }
+    await syncVideos();
+  } finally {
+    stoppingShare = false;
   }
-  if (localVideoTrack) {
-    await agoraEngine.publish(localVideoTrack);
-    await nextTick();
-    localVideoTrack.play('local-player', { fit: 'cover' });
-  }
-  isScreenSharing.value = false;
 };
 
 const reloadPage = () => window.location.reload();
@@ -1365,24 +1556,28 @@ const invite = async (userId) => {
 };
 
 // Teacher: ask a speaker to mute (soft — student can unmute themselves).
+// Muting is a request: the student's app closes their mic, and we see that when
+// their audio stops publishing. Until then show the mic as closed so the click
+// gives instant feedback; the entry is dropped once the real state has caught up.
+const mutedAsked = ref(new Set());
+const setMutedAsked = (userId, on) => {
+  const next = new Set(mutedAsked.value);
+  if (on) next.add(userId); else next.delete(userId);
+  mutedAsked.value = next;
+};
 const mute = async (userId) => {
+  setMutedAsked(userId, true);
+  setTimeout(() => setMutedAsked(userId, false), 6000);
   try {
     await liveClassService.muteSpeaker(targetClassId.value, userId);
-    flash('Asked to mute.', 1800);
+    flash('Mic closed.', 1800);
   } catch (err) {
+    setMutedAsked(userId, false);
     showActionError(err, 'Could not mute this speaker.');
   }
 };
 
 // Teacher: drop a student off the stage (speaker or raised hand).
-const remove = async (userId) => {
-  try {
-    await liveClassService.removeSpeaker(targetClassId.value, userId);
-  } catch (err) {
-    showActionError(err, 'Could not update this participant.');
-  }
-};
-
 // Teacher: start the class.
 const startClass = async () => {
   if (statusBusy.value) return;
@@ -1401,9 +1596,14 @@ const startClass = async () => {
 // Teacher: end the class for everyone. This also removes every participant
 // server-side and pushes class:status "completed" (students auto-leave), so
 // there is no separate Leave for the teacher — we just tear down and go.
-const endClass = async () => {
+const endClass = () => {
   if (statusBusy.value) return;
-  if (!window.confirm('End class for everyone? All students will be removed.')) return;
+  showEndClass.value = true;
+};
+
+// Called by the End class modal once the teacher confirms.
+const performEndClass = async () => {
+  if (statusBusy.value) return;
   statusBusy.value = true;
   try {
     await liveClassService.endLiveClass(targetClassId.value);
@@ -1428,16 +1628,13 @@ async function teardownAndExit() {
   const alreadyGone = hasLeft;
   hasLeft = true;
   clearInterval(pollTimer);
+  clearInterval(levelTimer);
   if (autoLeaveTimer) clearTimeout(autoLeaveTimer);
 
   try {
     if (!alreadyGone) {
       socketConn?.disconnect();   // emits live-class:unsubscribe
-      if (screenTrack) {
-        const track = Array.isArray(screenTrack) ? screenTrack[0] : screenTrack;
-        try { track.stop(); } catch (_) { /* noop */ }
-        track.close();
-      }
+      releaseScreenTracks();   // every track of the capture, not just the video
       try { localAudioTrack?.stop(); localVideoTrack?.stop(); } catch (_) { /* noop */ }
       localAudioTrack?.close();
       localVideoTrack?.close();
@@ -1448,14 +1645,163 @@ async function teardownAndExit() {
   } finally {
     emit('left-class');
     if (route.name === 'LiveStream') {
-      // After ending, show the teacher the "save OBS recording" dialog over
-      // this page; it closes the tab once the upload completes.
+      // After ending, the teacher stays on the dialog (the End class modal, or
+      // the save-recording one if the class was ended elsewhere); it closes
+      // the tab once the upload completes or is skipped.
       if (isTeacher.value && liveClass.value.status === 'completed') {
-        showSaveRecording.value = true;
+        if (!showEndClass.value) showSaveRecording.value = true;
       } else {
         router.push('/');
       }
     }
+  }
+}
+
+// ========================================================================
+// Browser recording (an alternative to OBS) — see utils/browserRecorder.js
+// ========================================================================
+const recState = ref('idle');          // 'idle' | 'starting' | 'recording' | 'finishing'
+const recElapsed = ref(0);             // seconds
+const recSaving = ref(null);           // { stage, progress } while a stopped recording uploads
+const recClock = computed(() => {
+  const t = recElapsed.value;
+  const pad = (n) => String(n).padStart(2, '0');
+  return t >= 3600 ? `${Math.floor(t / 3600)}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}` : `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+});
+let recorder = null;
+let recSyncTimer = null;
+let recClockTimer = null;
+let recCount = 0;
+
+// What is live right now, as raw MediaStreamTracks: the shared screen (else the
+// camera) for the picture, and every open audio track for the sound — ours, the
+// shared tab's audio, and any student who has the mic.
+function recordingSources() {
+  const raw = (t) => t?.getMediaStreamTrack?.() || null;
+  const sharing = isScreenSharing.value && screenTrack;
+  const [screenVideo, screenAudio] = Array.isArray(screenTrack) ? screenTrack : [screenTrack, null];
+  return {
+    screen: sharing ? raw(screenVideo) : null,
+    camera: !sharing && videoEnabled.value ? raw(localVideoTrack) : null,
+    audio: [
+      audioEnabled.value ? raw(localAudioTrack) : null,
+      sharing ? raw(screenAudio) : null,
+      ...(agoraEngine?.remoteUsers || []).map(u => raw(u.audioTrack)),
+    ].filter(Boolean),
+  };
+}
+
+const warnBeforeLeaving = (e) => { e.preventDefault(); e.returnValue = ''; };
+
+function stopRecordingTimers() {
+  clearInterval(recSyncTimer);
+  clearInterval(recClockTimer);
+  recSyncTimer = recClockTimer = null;
+  window.removeEventListener('beforeunload', warnBeforeLeaving);
+}
+
+async function startRecording() {
+  if (recState.value !== 'idle') return;
+  if (!isRecordingSupported()) {
+    flash("This browser can't record the class. Use the OBS option instead (Copy OBS recorder link), then upload the file when you end the class.", 9000);
+    return;
+  }
+  const src = recordingSources();
+  if (!src.screen && !src.camera && !src.audio.length) {
+    flash('Nothing to record yet — turn on your mic or camera, or share your screen first.', 6000);
+    return;
+  }
+  recState.value = 'starting';
+  try {
+    recorder = createBrowserRecorder({
+      name: userName.value,
+      onError: (err) => {
+        console.error('Recorder error:', err);
+        flash(`Recording stopped unexpectedly: ${err.message}. Use the OBS option if you need this class recorded.`, 9000);
+        recorder?.dispose();
+        recorder = null;
+        stopRecordingTimers();
+        recState.value = 'idle';
+      },
+    });
+    await recorder.start(src);
+  } catch (err) {
+    console.error('Could not start recording:', err);
+    recorder?.dispose();
+    recorder = null;
+    flash(err.code === 'unsupported'
+      ? "This browser can't record the class. Use the OBS option instead."
+      : `Could not start recording: ${err.message}. You can still use the OBS option.`, 9000);
+    recState.value = 'idle';
+    return;
+  }
+  recElapsed.value = 0;
+  recState.value = 'recording';
+  // Tracks come and go (share on/off, mute, a student takes the mic) — keep the
+  // recorder pointed at whatever is live.
+  recSyncTimer = setInterval(() => recorder?.update(recordingSources()), 300);
+  recClockTimer = setInterval(() => { recElapsed.value = Math.floor((recorder?.elapsedMs() || 0) / 1000); }, 1000);
+  window.addEventListener('beforeunload', warnBeforeLeaving);   // a tab closed mid-recording loses it
+  if (!src.audio.length) flash('Recording started without sound — your mic is off.', 5000);
+}
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Stop and hand back the finished file — also saved to the teacher's computer,
+// so there's a local copy whatever happens to the upload. Null if not recording.
+async function finishRecording() {
+  if (!recorder || recState.value !== 'recording') return null;
+  recState.value = 'finishing';
+  stopRecordingTimers();
+  try {
+    const { blob, ext, mimeType } = await recorder.stop();
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+    const base = (liveClass.value.title || 'live-class').replace(/[\\/:*?"<>|]+/g, '').trim().replace(/\s+/g, '-');
+    const file = new File([blob], `${base}-${stamp}.${ext}`, { type: mimeType });
+    downloadFile(file);
+    return file;
+  } finally {
+    recorder = null;
+    recState.value = 'idle';
+  }
+}
+
+// The Stop button: finish, download, then save it to the course like an OBS upload.
+async function stopRecording() {
+  let file;
+  try {
+    file = await finishRecording();
+  } catch (err) {
+    flash(`The recording failed: ${err.message}`, 8000);
+    return;
+  }
+  if (!file) return;
+  recCount += 1;
+  recSaving.value = { stage: 'Creating chapter…', progress: 0 };
+  try {
+    await saveRecordingToCourse({
+      courseId: liveClass.value.course_id,
+      liveClassId: targetClassId.value,
+      title: `${liveClass.value.title || 'Live class'} (recording${recCount > 1 ? ` ${recCount}` : ''})`,
+      file,
+      onStage: (stage) => { recSaving.value = { ...recSaving.value, stage }; },
+      onProgress: (progress) => { recSaving.value = { ...recSaving.value, progress }; },
+    });
+    flash('Recording saved to the course (a copy was downloaded too).', 6000);
+  } catch (err) {
+    console.error('Saving the recording failed:', err);
+    flash(`Saved to your computer, but the upload failed: ${err.response?.data?.error || err.message}. You can upload the file from "Save class recording".`, 10000);
+  } finally {
+    recSaving.value = null;
   }
 }
 

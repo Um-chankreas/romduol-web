@@ -77,7 +77,8 @@ onMounted(async () => {
   }
   try {
     const d = await fetchToken();
-    client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    // Match the mobile app's LiveBroadcasting profile; this view only watches.
+    client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8', role: 'audience' });
 
     client.on('user-published', async (user, mediaType) => {
       await client.subscribe(user, mediaType);
@@ -92,6 +93,10 @@ onMounted(async () => {
     });
     client.on('user-unpublished', (user, mediaType) => {
       if (mediaType === 'video') upsert(user.uid, { hasVideo: false });
+    });
+    // A native app muting / disabling its camera doesn't always unpublish it.
+    client.on('user-info-updated', (uid, msg) => {
+      if (msg === 'mute-video' || msg === 'disable-local-video') upsert(uid, { hasVideo: false });
     });
     client.on('user-left', (user) => {
       users.value = users.value.filter(u => u.uid !== user.uid);

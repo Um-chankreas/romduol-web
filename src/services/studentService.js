@@ -3,18 +3,21 @@ import api from './axios'
 // Admin-only student & subscription management.
 // Backend: ../lms-backend/src/routes/admin.routes.js — source of truth for shapes.
 //
-// Payment model (migration 014): an account-level weekly subscription.
-// users.paid_until >= today  =>  is_paid  =>  may join EVERY course's live
-// classes. Admins additionally gate live classes per course via
-// courses.live_enabled.
+// Payment model (migration 038): subscriptions are PER COURSE. A student has one
+// student_course_subscriptions row per course; the row is active while
+// expiry_date >= today, and only unlocks THAT course's live classes.
+// Admins additionally switch live classes off for a whole course via
+// courses.live_enabled ("Course Live Access" tab) — that overrides everything.
 
 export const studentService = {
   /**
    * List students.
    * params: { search?, paid?: boolean, include_inactive?: boolean, page?, limit? }
-   * `paid` filters by an active weekly subscription.
+   * `paid` = has / has no ACTIVE subscription on any course.
    * Each row: { id, name, email, phone, role, avatar_url, xp, is_active,
-   *             paid_until, last_paid_at, is_paid, created_at }
+   *             is_paid, created_at,
+   *             subscription_summary: { enrolled, active,
+   *               active_courses: [{ course_id, title, expiry_date }] } }
    */
   async listStudents(params = {}) {
     const query = {}
@@ -32,14 +35,14 @@ export const studentService = {
     }
   },
 
-  // Detail: { student, subscription: { is_paid, paid_until, last_paid_at },
-  //           enrolled_courses: [{ course: { id, title, is_free, live_enabled }, enrolled_at }] }
+  // Detail: { student, enrolled_courses: [{
+  //   course: { id, title, is_free, live_enabled }, enrolled_at,
+  //   subscription: { is_active, expiry_date, last_updated } }] }
   async getStudent(id) {
     const res = await api.get(`/admin/students/${id}`)
     const data = res.data?.data || res.data || {}
     return {
       student: data.student || null,
-      subscription: data.subscription || null,
       enrolled_courses: data.enrolled_courses || [],
     }
   },
@@ -66,23 +69,23 @@ export const studentService = {
   },
 
   /**
-   * Grant / extend / revoke the weekly live-class subscription.
-   *   { weeks: n }          -> extend paid_until by n weeks (1..52)
-   *   { paid_until: 'YYYY-MM-DD' } -> set expiry explicitly
-   *   { paid_until: null }  -> revoke immediately
-   * Returns { student_id, is_paid, paid_until, last_paid_at }
+   * Grant / extend / revoke ONE course's live-class subscription for a student.
+   *   { weeks: n }                  -> extend expiry by n weeks (1..52)
+   *   { expiry_date: 'YYYY-MM-DD' } -> set expiry explicitly
+   *   { expiry_date: null }         -> revoke immediately
+   * Returns { student_id, course_id, is_active, expiry_date, last_updated }
    */
-  async setSubscription(id, body) {
-    const res = await api.post(`/admin/students/${id}/subscription`, body)
+  async setCourseSubscription(studentId, courseId, body) {
+    const res = await api.post(`/admin/students/${studentId}/courses/${courseId}/subscription`, body)
     return res.data?.data?.subscription || res.data?.subscription || res.data
   },
 
-  addWeeks(id, weeks = 1) {
-    return this.setSubscription(id, { weeks })
+  addWeeks(studentId, courseId, weeks = 1) {
+    return this.setCourseSubscription(studentId, courseId, { weeks })
   },
 
-  revokeSubscription(id) {
-    return this.setSubscription(id, { paid_until: null })
+  revokeSubscription(studentId, courseId) {
+    return this.setCourseSubscription(studentId, courseId, { expiry_date: null })
   },
 
   // Course list: [{ id, title, is_free, live_enabled, code, teacher }]
