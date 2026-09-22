@@ -10,6 +10,25 @@
       <span v-if="!isTeacher"> You will be returned shortly…</span>
     </div>
 
+    <!-- Lost / recovering the Agora connection -->
+    <div
+      v-if="connectionBanner"
+      :class="[
+        'text-white text-xs md:text-sm font-semibold px-4 py-2 text-center shrink-0 flex items-center justify-center gap-3 flex-wrap',
+        connectionBanner.tone === 'error' ? 'bg-red-600/90' : 'bg-amber-600/90'
+      ]"
+      role="status"
+    >
+      <span>{{ connectionBanner.text }}</span>
+      <button
+        v-if="connectionBanner.canRetry"
+        class="px-3 py-1 rounded-md bg-white/20 hover:bg-white/30 cursor-pointer"
+        @click="manualRejoin"
+      >
+        Reconnect to class
+      </button>
+    </div>
+
     <!-- Teacher: End class confirmation + optional OBS recording upload -->
     <SaveRecordingModal
       v-if="showEndClass"
@@ -1058,13 +1077,23 @@ async function initializeAgora(appId, channel, token, numericUid) {
   agoraEngine.on('user-published', handleUserPublished);
   agoraEngine.on('user-unpublished', handleUserUnpublished);
   agoraEngine.on('user-info-updated', handleUserInfoUpdated);
-  agoraEngine.on('user-left', (user) => {
+  agoraEngine.on('user-left', (user, reason) => {
+    // reason: "Quit" (left), "ServerTimeOut" (no packets for 20 s — dropped
+    // network / sleep / closed tab), "BecomeAudience" (stepped off the stage).
+    console.info('[live] user-left', user.uid, reason);
     remoteUsers.value = remoteUsers.value.filter(u => u.uid !== user.uid);
   });
-  agoraEngine.on('token-privilege-will-expire', renewAgoraToken);
+  agoraEngine.on('token-privilege-will-expire', () => renewAgoraToken());
+  agoraEngine.on('token-privilege-did-expire', onTokenDidExpire);
+  agoraEngine.on('connection-state-change', onConnectionStateChange);
 
   connectionStatus.value = 'Joining channel...';
   await agoraEngine.join(appId, channel, token, numericUid);
+  // Remember exactly which session this is, so a reconnect can only ever go
+  // back to it (see attemptRejoin).
+  sessionIdentity = { classId: targetClassId.value, appId, channel, uid: numericUid };
+  lastToken = { token, at: Date.now() };
+  startRejoinWatch();
 
   if (canPublish.value) {
     connectionStatus.value = 'Requesting camera and microphone access...';
@@ -1080,15 +1109,226 @@ async function initializeAgora(appId, channel, token, numericUid) {
   await syncVideos();
 }
 
-async function renewAgoraToken() {
+// The SDK warns 30 s before the token expires and disconnects if it isn't
+// renewed, so a failed attempt (blip, 5xx) is retried a few times inside that
+// window rather than given up on.
+const RENEW_RETRY_MS = [2000, 5000, 10000];
+
+async function renewAgoraToken(attempt = 0) {
+  if (hasLeft) return;
   try {
     const res = await liveClassService.getAgoraToken(targetClassId.value);
     const data = res.data || res;
-    if (data.token) await agoraEngine.renewToken(data.token);
+    if (data.token) { await agoraEngine.renewToken(data.token); lastToken = { token: data.token, at: Date.now() }; }
     if (data.role) rtcRole.value = data.role;
   } catch (err) {
-    console.error('Token renew failed:', err);
+    console.error(`[live] token renew failed (attempt ${attempt + 1}):`, err);
+    if (attempt < RENEW_RETRY_MS.length) {
+      setTimeout(() => renewAgoraToken(attempt + 1), RENEW_RETRY_MS[attempt]);
+    }
+    // Out of retries: the SDK disconnects at expiry and the rejoin path below
+    // picks it up with a fresh token.
   }
+}
+
+// ========================================================================
+// Connection loss & recovery
+//
+// The SDK retries a dropped network on its own (state RECONNECTING) and only
+// reports DISCONNECTED once it has given up. Nothing here used to listen, so the
+// teacher's page kept looking "live" while students saw the host leave. Now an
+// unexpected DISCONNECTED rejoins the channel with a fresh token and republishes
+// the tracks that were live (mic, camera or screen share) instead of ending the
+// teacher's session.
+// ========================================================================
+// Which session we are in. The channel is `live_classes.channel_name`
+// (class_<uuid>), created once when the class is created and never changed by
+// start / end, and POST /live-classes/:id/token always returns it for this class
+// id. The class id lives in the URL (/live/:id), so it survives a disconnect
+// (and even a page reload). This snapshot is what a reconnect is checked against.
+let sessionIdentity = null;   // { classId, appId, channel, uid }
+let lastToken = null;         // { token, at } — the newest token we were given
+
+const agoraState = ref('CONNECTED');   // CONNECTED | RECONNECTING | DISCONNECTED
+const rejoinAttempt = ref(0);
+const rejoinGaveUp = ref(false);
+const rejoinFatal = ref('');           // set when retrying can't help
+let rejoinTimer = null;
+let rejoining = false;
+
+const REJOIN_MAX_ATTEMPTS = 8;
+const TOKEN_FETCH_TIMEOUT_MS = 8000;             // a half-dead network must not stall the retry loop
+const CACHED_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;  // far inside any token lifetime we issue (default 4 h)
+const withTimeout = (p, ms) =>
+  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+const rejoinDelay = (n) => Math.min(1000 * 2 ** n, 15000);   // 1, 2, 4, 8, 15, 15 …
+
+// Banned / licence errors: rejoining fails every time — and for UID_BANNED (the
+// same account joined from another tab or device) it would just kick that
+// client back out in a loop.
+const isFatalDisconnect = (reason) =>
+  ['UID_BANNED', 'IP_BANNED', 'CHANNEL_BANNED'].includes(reason) || String(reason).startsWith('LICENSE_');
+
+const connectionBanner = computed(() => {
+  if (agoraState.value === 'CONNECTED' || liveClass.value.status === 'completed') return null;
+  if (agoraState.value === 'RECONNECTING') {
+    return { tone: 'warn', text: 'Reconnecting…' };
+  }
+  if (rejoinFatal.value) return { tone: 'error', text: rejoinFatal.value };
+  if (rejoinGaveUp.value) return { tone: 'error', text: 'Could not reconnect to the class.', canRetry: true };
+  return { tone: 'warn', text: `Reconnecting… (attempt ${rejoinAttempt.value} of ${REJOIN_MAX_ATTEMPTS})` };
+});
+
+function onConnectionStateChange(cur, prev, reason) {
+  console.warn(`[live] agora ${prev} -> ${cur}${reason ? ` (${reason})` : ''}`, {
+    hidden: document.hidden,
+    online: navigator.onLine,
+  });
+  if (hasLeft) return;
+  if (cur === 'CONNECTED') agoraState.value = 'CONNECTED';
+  else if (cur === 'RECONNECTING') agoraState.value = 'RECONNECTING';
+  else if (cur === 'DISCONNECTED' && reason !== 'LEAVE') handleUnexpectedDisconnect(reason);
+}
+
+// Renewal failed (or was too late): the SDK wants a fresh join, not renewToken.
+async function onTokenDidExpire() {
+  console.warn('[live] token expired before it was renewed — rejoining with a fresh one');
+  if (hasLeft) return;
+  try { await agoraEngine.leave(); } catch (_) { /* already gone */ }
+  handleUnexpectedDisconnect('TOKEN_EXPIRE');
+}
+
+function handleUnexpectedDisconnect(reason) {
+  agoraState.value = 'DISCONNECTED';
+  if (isFatalDisconnect(reason)) {
+    rejoinFatal.value = reason === 'UID_BANNED'
+      ? 'This class was opened somewhere else with your account (another tab or device), so this session was disconnected.'
+      : 'You were disconnected from the class and cannot rejoin automatically.';
+    return;
+  }
+  rejoinFatal.value = '';
+  rejoinGaveUp.value = false;
+  scheduleRejoin(0);
+}
+
+function scheduleRejoin(attempt) {
+  clearTimeout(rejoinTimer);
+  if (hasLeft) return;
+  if (attempt >= REJOIN_MAX_ATTEMPTS) { rejoinGaveUp.value = true; return; }
+  rejoinAttempt.value = attempt + 1;
+  rejoinTimer = setTimeout(() => attemptRejoin(attempt), rejoinDelay(attempt));
+}
+
+async function attemptRejoin(attempt = 0) {
+  // Only when the SDK has really given up: RECONNECTING is its own retry.
+  if (hasLeft || rejoining || !agoraEngine || !sessionIdentity || agoraEngine.connectionState !== 'DISCONNECTED') return;
+  rejoining = true;
+  try {
+    // Don't walk back into a class that has ended. The server auto-ends one whose
+    // teacher has been gone for a few minutes, yet would still hand the teacher a token.
+    await withTimeout(refreshDetails(), TOKEN_FETCH_TIMEOUT_MS).catch(() => {});
+    if (liveClass.value.status === 'completed') {
+      rejoinFatal.value = 'This class has ended.';
+      return;
+    }
+
+    // Same session: same class id -> same channel, same uid. A token for the
+    // same channel is either fetched fresh, or — if the API is unreachable —
+    // the one we already hold, while it is still well within its lifetime.
+    const { appId, channel, uid } = sessionIdentity;
+    let token;
+    try {
+      const res = await withTimeout(liveClassService.getAgoraToken(sessionIdentity.classId), TOKEN_FETCH_TIMEOUT_MS);
+      const data = res.data || res;
+      if ((data.channel || data.channel_name) !== channel || Number(data.uid) !== Number(uid)) {
+        const e = new Error('session mismatch');
+        e.mismatch = true;
+        throw e;
+      }
+      token = data.token;
+      if (data.role) rtcRole.value = data.role;
+      lastToken = { token, at: Date.now() };
+    } catch (err) {
+      const unreachable = !err.response && !err.mismatch;
+      if (!(unreachable && lastToken && Date.now() - lastToken.at < CACHED_TOKEN_MAX_AGE_MS)) throw err;
+      console.warn('[live] token endpoint unreachable — rejoining with the token we already hold');
+      token = lastToken.token;
+    }
+    if (hasLeft) return;
+
+    remoteUsers.value = [];
+    for (const k of [...attached.keys()]) if (k !== 'local') attached.delete(k);   // remote players died with the session
+
+    await agoraEngine.join(appId, channel, token, uid);
+    agoraState.value = 'CONNECTED';
+    rejoinAttempt.value = 0;
+    rejoinGaveUp.value = false;
+    console.info('[live] rejoined channel', channel);
+
+    try {
+      await republishLocalTracks();
+      flash('Reconnected', 2500);
+    } catch (err) {
+      console.error('[live] republishing after rejoin failed:', err);
+      flash('Reconnected, but your camera / mic could not be restored. Use the controls to retry.', 6000);
+    }
+    await syncVideos();
+  } catch (err) {
+    const status = err.response?.status;
+    console.warn(`[live] rejoin attempt ${attempt + 1} failed:`, status || err.code || err.message);
+    if (err.mismatch) {
+      rejoinFatal.value = 'Could not confirm this is still the same class session, so it was not rejoined. Reload the page.';
+    } else if (status === 403 || status === 404 || status === 409) {
+      // Class ended / access removed: retrying can't help.
+      rejoinFatal.value = err.response?.data?.error || 'You can no longer rejoin this class.';
+    } else {
+      scheduleRejoin(attempt + 1);
+    }
+  } finally {
+    rejoining = false;
+  }
+}
+
+// After leave() the SDK holds nothing published, but our local tracks are still
+// alive: put back what was live before the drop.
+async function republishLocalTracks() {
+  if (!canPublish.value) {
+    if (agoraEngine.role === 'host') await agoraEngine.setClientRole('audience');   // lost the stage while away
+    return;
+  }
+  const [screenVideo] = screenTracks();
+  const sharing = isScreenSharing.value && screenVideo?.getMediaStreamTrack?.().readyState === 'live';
+  const tracks = [localAudioTrack, sharing ? screenVideo : localVideoTrack].filter(Boolean);
+  if (tracks.length) await publishTracks(tracks);
+  isPublishing = tracks.length > 0;
+}
+
+const manualRejoin = () => {
+  rejoinFatal.value = '';
+  rejoinGaveUp.value = false;
+  rejoinAttempt.value = 1;
+  clearTimeout(rejoinTimer);
+  attemptRejoin(0);
+};
+
+// Don't wait out a backoff timer when the cause has just gone away: the network
+// is back, or the laptop just woke and the tab is visible again.
+const wakeRejoin = () => {
+  if (hasLeft || rejoinFatal.value || agoraState.value !== 'DISCONNECTED') return;
+  clearTimeout(rejoinTimer);
+  rejoinGaveUp.value = false;
+  attemptRejoin(0);
+};
+const onVisibility = () => { if (!document.hidden) wakeRejoin(); };
+
+function startRejoinWatch() {
+  window.addEventListener('online', wakeRejoin);
+  document.addEventListener('visibilitychange', onVisibility);
+}
+function stopRejoinWatch() {
+  clearTimeout(rejoinTimer);
+  window.removeEventListener('online', wakeRejoin);
+  document.removeEventListener('visibilitychange', onVisibility);
 }
 
 function upsertRemote(uid, patch) {
@@ -1419,6 +1659,12 @@ function releaseScreenTracks() {
   screenTrack = null;
 }
 
+// One client can publish only one video track (CAN_NOT_PUBLISH_MULTIPLE_VIDEO_TRACKS),
+// and a camera switched off with setEnabled(false) is still a published track.
+// So the camera is pulled off the wire whenever it's published — not only when
+// the button says "on" — and put back when the share ends.
+let cameraPausedForShare = false;
+
 const toggleScreenShare = async () => {
   if (isScreenSharing.value) return handleStopScreenShare();
   let cameraUnpublished = false;
@@ -1430,9 +1676,10 @@ const toggleScreenShare = async () => {
     }, 'auto');
     const [track] = screenTracks();
 
-    if (localVideoTrack && videoEnabled.value) {
+    if (localVideoTrack && agoraEngine.localTracks.includes(localVideoTrack)) {
       await agoraEngine.unpublish(localVideoTrack);
       cameraUnpublished = true;
+      cameraPausedForShare = true;
     }
     await agoraEngine.publish(track);
 
@@ -1449,8 +1696,12 @@ const toggleScreenShare = async () => {
     console.error('Failed to start screen share:', err);
     // Don't leave a half-started capture running (picker cancelled = nothing to release).
     releaseScreenTracks();
-    if (cameraUnpublished && localVideoTrack && videoEnabled.value) {
-      try { await agoraEngine.publish(localVideoTrack); } catch (e) { console.error('restoring the camera failed:', e); }
+    if (cameraUnpublished && localVideoTrack) {
+      try { await publishTracks([localVideoTrack]); cameraPausedForShare = false; } catch (e) { console.error('restoring the camera failed:', e); }
+    }
+    // Cancelling the picker isn't an error; anything else shouldn't fail silently.
+    if (err?.code !== 'PERMISSION_DENIED' && err?.name !== 'NotAllowedError') {
+      flash('Could not start screen sharing. Please try again.', 5000);
     }
   }
 };
@@ -1475,10 +1726,13 @@ const handleStopScreenShare = async () => {
     //    depend on the camera coming back (step 4 can fail on its own).
     isScreenSharing.value = false;
     shareWarning.value = '';
-    // 4. Bring the camera back if it was on.
-    if (localVideoTrack && videoEnabled.value) {
+    // 4. Bring the camera back on the wire if we took it off for the share
+    //    (also when it's switched off — publishTracks handles that — so
+    //    turning it on later just works).
+    if (localVideoTrack && cameraPausedForShare) {
       try {
-        await agoraEngine.publish(localVideoTrack);
+        await publishTracks([localVideoTrack]);
+        cameraPausedForShare = false;
       } catch (err) {
         console.error('restoring the camera after sharing failed:', err);
         flash('Screen sharing stopped, but your camera could not be restored. Tap the camera button to retry.', 6000);
@@ -1629,6 +1883,7 @@ async function teardownAndExit() {
   hasLeft = true;
   clearInterval(pollTimer);
   clearInterval(levelTimer);
+  stopRejoinWatch();
   if (autoLeaveTimer) clearTimeout(autoLeaveTimer);
 
   try {
