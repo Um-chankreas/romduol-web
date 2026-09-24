@@ -312,6 +312,13 @@ onMounted(load)
                   </template>
 
                   <template v-else-if="!isTeacher || !courseAccess || activeTab === 'theory'">
+                    <video
+                      v-if="selected.video_url"
+                      :src="selected.video_url"
+                      controls
+                      class="w-full max-h-[60vh] rounded-xl bg-black mb-5"
+                    ></video>
+
                     <MarkdownContent v-if="selected.content != null" :source="selected.content" />
 
                     <div v-if="selected.content == null" class="space-y-4">

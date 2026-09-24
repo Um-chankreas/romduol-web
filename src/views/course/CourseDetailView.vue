@@ -9,6 +9,7 @@ import Header from '@/components/layout/Header.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
 import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
+import ClassScheduleCard from '@/components/classes/ClassScheduleCard.vue'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
 import { unitService } from '@/services/unitService'
@@ -95,7 +96,8 @@ const tabs = computed(() => [
   { id: 'lessons', name: 'Lessons', icon: '📖', tint: 'bg-blue-100 dark:bg-blue-950/50', count: lessons.value.length },
   { id: 'quizzes', name: 'Quizzes', icon: '❓', tint: 'bg-rose-100 dark:bg-rose-950/50', count: allQuizzes.value.length },
   { id: 'assignments', name: 'Assignments', icon: '📋', tint: 'bg-violet-100 dark:bg-violet-950/50', count: assignments.value.length },
-  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: enrolledStudents.value.length }
+  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: enrolledStudents.value.length },
+  { id: 'schedule', name: 'Schedule', icon: '📅', tint: 'bg-amber-100 dark:bg-amber-950/50' }
 ])
 
 // ── Assignments ───────────────────────────────────────────────────────────
@@ -894,6 +896,12 @@ onMounted(() => {
                     </div>
                   </div>
                 </div>
+
+                <!-- SCHEDULE TAB -->
+                <ClassScheduleCard
+                  v-else-if="activeTab === 'schedule'"
+                  :course-id="route.params.id"
+                />
               </div>
             </div>
           </template>

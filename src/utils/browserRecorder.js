@@ -34,6 +34,53 @@ export function isRecordingSupported() {
     && !!(window.AudioContext || window.webkitAudioContext);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunk storage: a 1-2 hour class at the defaults below (1080p/4 Mbps + 128 kbps
+// audio) produces ~2-4 GB. MediaRecorder hands that back in ~1 s chunks, and
+// simply pushing every chunk onto a JS array for the whole class — then doing
+// `new Blob(allChunks)` at the end — holds the entire recording in the tab's
+// memory and forces one huge concatenation right as the teacher clicks Stop.
+// That is an OOM tab crash waiting to happen on anything but a short recording.
+//
+// Instead, each chunk is written straight to a temp file in the Origin Private
+// File System (OPFS) as it arrives, so memory use stays flat regardless of how
+// long the class runs; `stop()` hands back a File backed by that OPFS entry
+// instead of an in-memory Blob. No backend involved — this is purely local
+// browser storage, freed once the next recording starts (see openOpfsSink).
+//
+// Falls back to the old in-memory array when OPFS isn't available (older
+// Safari, Firefox) — same behavior as before on those browsers, not a
+// regression, since Firefox already can't produce MP4 here either.
+// ─────────────────────────────────────────────────────────────────────────────
+const OPFS_DIR = 'live-recordings';
+
+async function openOpfsSink() {
+  if (!navigator.storage?.getDirectory) return null;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(OPFS_DIR, { create: true });
+    // Best-effort: clear anything left over from a prior recording that never
+    // got a chance to clean up after itself (crash, tab closed mid-upload).
+    // Bounded to "at most the previous session's leftovers" — never grows.
+    for await (const name of dir.keys()) {
+      try { await dir.removeEntry(name); } catch (_) { /* in use elsewhere — leave it */ }
+    }
+    const name = `rec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const handle = await dir.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    return { dir, handle, name, writable };
+  } catch (err) {
+    console.warn('[recorder] OPFS unavailable, buffering in memory instead:', err);
+    return null;
+  }
+}
+
+async function releaseOpfsSink(sink) {
+  if (!sink) return;
+  try { await sink.writable.close(); } catch (_) { /* already closed/aborted */ }
+  try { await sink.dir.removeEntry(sink.name); } catch (_) { /* already gone */ }
+}
+
 // requestAnimationFrame stops in a background tab — and the teacher is usually
 // looking at the window they're sharing. A worker's timer keeps ticking.
 function startTicker(fn, ms) {
@@ -171,11 +218,32 @@ export function createBrowserRecorder({ width = 1920, height = 1080, fps = 30, v
     videoBitsPerSecond,
     audioBitsPerSecond: 128_000,
   });
-  const chunks = [];
+  // sink: OPFS-backed (chunks written straight to disk). chunks: in-memory
+  // fallback array, only used when OPFS isn't available. Exactly one is active.
+  let sink = null;
+  let chunks = null;
+  let writeChain = Promise.resolve();
+  let writeError = null;
   let startedAt = 0;
   let stopTicker = null;
+  let handedOff = false;   // true once stop() has resolved — dispose() must never touch that file again
 
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.ondataavailable = (e) => {
+    if (!e.data || !e.data.size) return;
+    if (sink) {
+      // Writes must land in order on one stream — chain them rather than
+      // firing concurrently, and remember the first failure so stop() can
+      // surface it instead of silently handing back a truncated recording.
+      writeChain = writeChain
+        .then(() => sink.writable.write(e.data))
+        .catch((err) => {
+          writeError = writeError || err;
+          console.error('[recorder] writing a chunk to disk failed:', err);
+        });
+    } else {
+      chunks.push(e.data);
+    }
+  };
   recorder.onerror = (e) => onError?.(e.error || new Error('Recording failed'));
 
   function cleanup() {
@@ -198,6 +266,8 @@ export function createBrowserRecorder({ width = 1920, height = 1080, fps = 30, v
   }
 
   async function start(sources) {
+    sink = await openOpfsSink();
+    if (!sink) chunks = [];
     update(sources);
     audioCtx.resume().catch(() => {});
     await firstFrames();
@@ -207,7 +277,9 @@ export function createBrowserRecorder({ width = 1920, height = 1080, fps = 30, v
     startedAt = performance.now();
   }
 
-  /** Finish and return the recording. */
+  /** Finish and return the recording. The blob is only kept around (in OPFS or
+   * memory) until the NEXT recording starts — callers must finish downloading
+   * / uploading it before then. */
   function stop() {
     return new Promise((resolve, reject) => {
       if (recorder.state === 'inactive') {
@@ -215,21 +287,41 @@ export function createBrowserRecorder({ width = 1920, height = 1080, fps = 30, v
         reject(new Error('Nothing was recorded.'));
         return;
       }
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const durationMs = performance.now() - startedAt;
-        const blob = new Blob(chunks, { type: format.type });
-        cleanup();
-        if (blob.size) resolve({ blob, ext: format.ext, mimeType: format.type, durationMs });
-        else reject(new Error('The recording is empty.'));
+        try {
+          let blob;
+          if (sink) {
+            await writeChain;   // let every queued chunk actually land first
+            if (writeError) throw writeError;
+            await sink.writable.close();
+            blob = await sink.handle.getFile();   // OPFS-backed File — reading it doesn't re-buffer the whole thing into heap
+          } else {
+            blob = new Blob(chunks, { type: format.type });
+          }
+          cleanup();
+          if (blob.size) {
+            handedOff = true;   // the caller now owns this file; leave it for the next start() to sweep
+            resolve({ blob, ext: format.ext, mimeType: format.type, durationMs });
+          } else {
+            reject(new Error('The recording is empty.'));
+          }
+        } catch (err) {
+          cleanup();
+          reject(err);
+        }
       };
       recorder.stop();
     });
   }
 
-  /** Abandon without producing a file (page is going away). */
+  /** Abandon without producing a file (page is going away, or an error mid-recording). */
   function dispose() {
     recorder.onstop = null;
     try { if (recorder.state !== 'inactive') recorder.stop(); } catch { /* noop */ }
+    if (sink && !handedOff) {
+      writeChain.catch(() => {}).finally(() => releaseOpfsSink(sink));
+    }
     cleanup();
   }
 

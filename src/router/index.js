@@ -55,6 +55,18 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/tools/trim-video',
+        name: 'TrimVideo',
+        component: () => import('@/views/tools/TrimVideoView.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/schedule',
+        name: 'Schedule',
+        component: () => import('@/views/schedule/ScheduleView.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/privacy-policy',
         name: 'PrivacyPolicy',
         component: () => import('@/views/legal/PrivacyPolicyView.vue')

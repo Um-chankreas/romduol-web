@@ -7,6 +7,7 @@ defineOptions({ name: 'ClassesView' });
 import { courseService } from '../../services/courseService.js';
 import { lessonService } from '../../services/lessonService.js';
 import { liveClassService } from '../../services/liveClassService.js';
+import { classScheduleService } from '../../services/classScheduleService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
@@ -51,8 +52,40 @@ const fetchCourses = async ({ silent = false } = {}) => {
   }
 };
 
+// courseId -> "Mon, Wed · 3:00 PM - 4:30 PM" for the ClassCard badge. Only
+// the first active schedule slot per course is shown (a course with several
+// slots just shows one; the full list is on the course detail page).
+const scheduleLabelByCourse = ref({});
+const DAY_LABEL = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
+const formatTime = (hhmm) => {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+};
+const scheduleSummary = (schedule) => {
+  const rank = (d) => (d === 0 ? 7 : d);
+  const days = (schedule.days_of_week || []).slice().sort((a, b) => rank(a) - rank(b)).map((d) => DAY_LABEL[d]);
+  return `${days.join(', ')} · ${formatTime(schedule.start_time)} - ${formatTime(schedule.end_time)}`;
+};
+
+const fetchSchedules = async () => {
+  try {
+    const res = await classScheduleService.getMySchedules();
+    const byCourse = {};
+    for (const schedule of res.data?.schedules || []) {
+      if (!byCourse[schedule.course_id]) byCourse[schedule.course_id] = scheduleSummary(schedule);
+    }
+    scheduleLabelByCourse.value = byCourse;
+  } catch {
+    /* non-fatal — cards just show no schedule badge */
+  }
+};
+
 onMounted(() => {
   fetchCourses();
+  fetchSchedules();
 });
 
 // This view is kept alive (see App.vue) so navigating back to it doesn't
@@ -65,6 +98,7 @@ onActivated(() => {
     return;
   }
   fetchCourses({ silent: true });
+  fetchSchedules();
 });
 
 /**
@@ -349,6 +383,7 @@ const handleJoinClass = async () => {
               ]"
               :isLive="true"
               :isFree="!!course.is_free"
+              :scheduleLabel="scheduleLabelByCourse[course.id] || ''"
               :loading="startingCourseId === course.id"
               @start-live="handleStartLive"
               @view-details="navigateToDetails"

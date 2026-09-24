@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import { unitService } from '@/services/unitService'
+import { isSupportedVideoFile } from '@/services/lessonService'
 import { isLatexDocument, latexToMarkdown, renderPendingFigures } from '@/utils/latexToMarkdown'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
 
@@ -24,6 +25,70 @@ const resetFromUnit = () => {
   error.value = null
 }
 watch(() => props.unit?.id, resetFromUnit, { immediate: true })
+
+// ── Unit video ────────────────────────────────────────────────────────────
+// A single optional video for this unit (separate from the chapter's own
+// intro video). Needs the unit to already exist — a brand-new, unsaved unit
+// has nowhere to attach the video to yet.
+const unitVideo = ref({ url: null, duration: null })
+watch(() => props.unit, (u) => {
+  unitVideo.value = { url: u?.video_url || null, duration: u?.duration_seconds || null }
+}, { immediate: true })
+
+const videoFileRef = ref(null)
+const videoDragging = ref(false)
+const videoUploading = ref(false)
+const videoProgress = ref(0)
+const videoError = ref('')
+
+const pickVideo = () => videoFileRef.value?.click()
+
+const uploadVideo = async (file) => {
+  videoError.value = null
+  if (!isSupportedVideoFile(file)) {
+    videoError.value = 'Unsupported video type. Use MP4, MOV, WebM, M4V or MKV.'
+    return
+  }
+  videoUploading.value = true
+  videoProgress.value = 0
+  try {
+    const res = await unitService.uploadUnitVideo(props.unit.id, file, {
+      onProgress: (p) => { videoProgress.value = p }
+    })
+    const updated = res?.data?.unit
+    unitVideo.value = { url: updated?.video_url || null, duration: updated?.duration_seconds || null }
+  } catch (err) {
+    videoError.value = err.response?.data?.error || err.message || 'Failed to upload video'
+  } finally {
+    videoUploading.value = false
+  }
+}
+
+const handleVideoFile = (e) => {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (file) uploadVideo(file)
+}
+const handleVideoDrop = (e) => {
+  videoDragging.value = false
+  const file = e.dataTransfer.files?.[0]
+  if (file) uploadVideo(file)
+}
+
+const removingVideo = ref(false)
+const removeVideo = async () => {
+  if (!confirm('Remove this unit\'s video?')) return
+  removingVideo.value = true
+  videoError.value = null
+  try {
+    await unitService.removeUnitVideo(props.unit.id)
+    unitVideo.value = { url: null, duration: null }
+  } catch (err) {
+    videoError.value = err.response?.data?.error || err.message || 'Failed to remove video'
+  } finally {
+    removingVideo.value = false
+  }
+}
 
 // Auto-grow the content textarea to fit whatever's typed or pasted in —
 // capped (see the CSS max-height) so a huge document scrolls instead of
@@ -224,6 +289,53 @@ const inputCls =
           @click="pickFigure(idx)"
         >{{ figureBusy === idx ? 'Uploading…' : 'Upload image' }}</button>
       </div>
+    </div>
+
+    <!-- Unit video (separate from the chapter's own intro video) -->
+    <div>
+      <p class="block text-xs font-bold text-slate-800 dark:text-slate-300 mb-2">Unit video</p>
+
+      <p v-if="!unit" class="text-xs text-slate-500 dark:text-slate-400">
+        Save the unit first, then you can add a video.
+      </p>
+
+      <template v-else>
+        <input ref="videoFileRef" type="file" class="hidden" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/x-matroska,.mp4,.mov,.webm,.m4v,.mkv" @change="handleVideoFile($event)" />
+
+        <div v-if="unitVideo.url" class="space-y-2">
+          <video :src="unitVideo.url" controls class="w-full max-h-72 rounded-lg bg-black"></video>
+          <div class="flex items-center justify-between">
+            <button type="button" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline" @click="pickVideo">Replace video</button>
+            <button type="button" :disabled="removingVideo" class="text-xs font-bold text-red-600 hover:underline disabled:opacity-50" @click="removeVideo">
+              {{ removingVideo ? 'Removing…' : 'Remove video' }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-else
+          @dragover.prevent="videoDragging = true"
+          @dragleave.prevent="videoDragging = false"
+          @drop.prevent="handleVideoDrop($event)"
+          :class="[
+            'w-full border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition cursor-pointer',
+            videoDragging ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+          ]"
+          @click="pickVideo"
+        >
+          <div class="text-xl mb-1">🎥</div>
+          <p class="text-xs font-bold text-slate-900 dark:text-white">Click to browse or drop a video</p>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">MP4, MOV, WebM, M4V or MKV</p>
+        </div>
+
+        <div v-if="videoUploading" class="mt-2 space-y-1">
+          <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+            <div class="h-full bg-emerald-600 transition-all" :style="{ width: videoProgress + '%' }"></div>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Uploading… {{ videoProgress }}%</p>
+        </div>
+        <p v-if="videoError" class="text-xs text-red-600 mt-1">{{ videoError }}</p>
+      </template>
     </div>
 
     <div class="flex items-center justify-between">

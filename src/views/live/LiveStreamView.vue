@@ -493,6 +493,27 @@
         </svg>
       </button>
 
+      <!-- Teacher: mute/unmute the "student joined" chime -->
+      <button
+        v-if="isTeacher"
+        @click="toggleJoinChime"
+        :title="joinChimeMuted ? 'Unmute join sound' : 'Mute join sound'"
+        :aria-label="joinChimeMuted ? 'Unmute join sound' : 'Mute join sound'"
+        :class="[
+          'hidden sm:block p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
+          joinChimeMuted ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+        ]"
+      >
+        <svg v-if="joinChimeMuted" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+        </svg>
+        <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728" />
+        </svg>
+      </button>
+
       <!-- Copy stream link (everyone) -->
       <button
         @click="copyMeetingLink"
@@ -596,6 +617,7 @@ import { authService } from '../../services/authService';
 import { connectLiveClassSocket } from '../../services/liveClassSocket';
 import { generateAgoraUid } from '../../utils/agoraUid';
 import { createBrowserRecorder, isRecordingSupported } from '../../utils/browserRecorder';
+import { createJoinChime, isJoinChimeMuted, setJoinChimeMuted } from '../../utils/joinChime';
 import { saveRecordingToCourse, STAGE_UPLOAD } from '../../utils/saveRecording';
 import { createLocalTracks, describeDeviceIssues, describeDeviceProblem } from '../../utils/agoraDevices';
 import brandLogo from '@/assets/logo/RS_logo.png';
@@ -719,6 +741,20 @@ function attachVideo(key, track, targetId) {
   attached.set(key, { el, track });
 }
 
+// Release our reference to a remote participant's tile once they're gone for
+// good (left the channel, or stopped publishing both audio and video) — Vue
+// removes the DOM row, but without this the `attached` entry keeps this
+// module-scoped Map holding the now-detached <video> element (still wired to
+// the dead stream via srcObject) for the rest of the class. Over a long
+// session with many students cycling through raise-hand/speak, these never
+// got released.
+function detachVideo(key) {
+  const cur = attached.get(key);
+  if (!cur) return;
+  try { cur.el.pause?.(); cur.el.srcObject = null; } catch (_) { /* noop */ }
+  attached.delete(key);
+}
+
 async function syncVideos() {
   await nextTick();
   for (const u of agoraEngine?.remoteUsers || []) {
@@ -767,6 +803,47 @@ function sampleVolumes() {
   const prev = talkingKeys.value;
   if (talking.size !== prev.size || [...talking].some(k => !prev.has(k))) talkingKeys.value = talking;
 }
+
+// ---- "student joined" chime -----------------------------------------------
+// Plays for the teacher only, once per genuinely new student. `participants`
+// is replaced wholesale on every server update, so a plain (non-deep) watch
+// fires on each one; the first firing just seeds the tracker — nobody already
+// in the room should chime when the teacher's own page finishes loading.
+const RECONNECT_WINDOW_MS = 30_000;   // a drop + rejoin inside this window stays silent
+const joinChimeMuted = ref(isJoinChimeMuted());
+const joinChime = createJoinChime();
+const knownStudentIds = new Set();
+const studentLastSeenAt = new Map();
+let joinTrackerSeeded = false;
+
+function toggleJoinChime() {
+  joinChimeMuted.value = !joinChimeMuted.value;
+  setJoinChimeMuted(joinChimeMuted.value);
+}
+
+watch(participants, (list) => {
+  if (!isTeacher.value) return;
+  const now = Date.now();
+  const currentIds = new Set();
+  for (const p of list) {
+    if (p.role === 'teacher' || p.user_id === currentUser?.id) continue;
+    currentIds.add(p.user_id);
+    if (!joinTrackerSeeded) {
+      knownStudentIds.add(p.user_id);
+    } else if (!knownStudentIds.has(p.user_id)) {
+      const lastSeen = studentLastSeenAt.get(p.user_id);
+      const isReconnect = lastSeen != null && now - lastSeen < RECONNECT_WINDOW_MS;
+      knownStudentIds.add(p.user_id);
+      if (!isReconnect) joinChime.play();
+    }
+    studentLastSeenAt.set(p.user_id, now);
+  }
+  // Drop anyone who left from the "known" set (not from last-seen — that's
+  // what the reconnect window above checks) so their next appearance is seen
+  // as a fresh join, unless it falls back inside the window.
+  for (const id of knownStudentIds) if (!currentIds.has(id)) knownStudentIds.delete(id);
+  joinTrackerSeeded = true;
+});
 
 // ---- name / avatar resolution for remote tiles --------------------------
 const infoByUid = computed(() => {
@@ -1052,15 +1129,46 @@ async function acquireLocalTracks({ audio = !localAudioTrack, video = !localVide
   micAvailable.value = !!localAudioTrack;
   cameraAvailable.value = !!localVideoTrack;
 
-  deviceNotice.value = describeDeviceIssues({ ...deviceIssues, presenter: isTeacher.value });
-
   // A camera track can't go out alongside an active screen share; it's
   // published when the share stops.
   const fresh = [res.audioTrack, isScreenSharing.value ? null : res.videoTrack].filter(Boolean);
   if (publish && fresh.length && agoraEngine) {
-    await agoraEngine.publish(fresh);
-    isPublishing = true;
+    try {
+      // In 'live' mode only a "host" may publish. A stale role — e.g. left over
+      // from a full disconnect/rejoin — would otherwise fail this silently;
+      // this is a cheap no-op when the role is already right.
+      if (canPublish.value) await agoraEngine.setClientRole('host');
+      await agoraEngine.publish(fresh);
+      isPublishing = true;
+    } catch (err) {
+      // The track already exists and plays fine locally regardless of this —
+      // that's what made a failed publish invisible before: the teacher's own
+      // preview looked completely normal while no one else received anything.
+      // Release it and fall back to the same "click to retry" state a device
+      // failure uses, so the teacher sees it's off instead of trusting a preview
+      // that was never actually reaching the class.
+      console.error('[live] publish failed for', fresh.map(t => t.trackMediaType).join('+'), err);
+      for (const t of fresh) {
+        const kind = t.trackMediaType;
+        try { t.close(); } catch (_) { /* noop */ }
+        if (kind === 'audio' && localAudioTrack === t) {
+          localAudioTrack = null;
+          audioEnabled.value = false;
+          micAvailable.value = false;
+        }
+        if (kind === 'video' && localVideoTrack === t) {
+          localVideoTrack = null;
+          videoEnabled.value = false;
+          cameraAvailable.value = false;
+          attached.delete('local');
+        }
+        deviceIssues[kind] = 'other';
+      }
+      const what = fresh.length > 1 ? 'camera and mic' : fresh[0].trackMediaType === 'audio' ? 'mic' : 'camera';
+      flash(`Could not reach the class — your ${what} never reached the other participants. Tap to retry.`, 7000);
+    }
   }
+  deviceNotice.value = describeDeviceIssues({ ...deviceIssues, presenter: isTeacher.value });
   // (Before the stage is on screen, initializeAgora attaches it once connected.)
   if (res.videoTrack && !isScreenSharing.value && isConnected.value) await syncVideos();
   if (audio || video) refreshDevices();
@@ -1082,6 +1190,7 @@ async function initializeAgora(appId, channel, token, numericUid) {
     // network / sleep / closed tab), "BecomeAudience" (stepped off the stage).
     console.info('[live] user-left', user.uid, reason);
     remoteUsers.value = remoteUsers.value.filter(u => u.uid !== user.uid);
+    detachVideo(user.uid);
   });
   agoraEngine.on('token-privilege-will-expire', () => renewAgoraToken());
   agoraEngine.on('token-privilege-did-expire', onTokenDidExpire);
@@ -1289,6 +1398,20 @@ async function attemptRejoin(attempt = 0) {
   }
 }
 
+// Publish whichever of `tracks` isn't already on the wire. Only a 'host' may
+// publish in this app's live-broadcast profile, so that's set first; skip
+// anything already in agoraEngine.localTracks — Agora rejects publishing the
+// same track twice (used to restore the camera after screen share ends, and
+// to republish everything after a reconnect).
+async function publishTracks(tracks) {
+  const list = tracks.filter(Boolean);
+  if (!list.length) return;
+  if (canPublish.value) await agoraEngine.setClientRole('host');
+  const alreadyUp = agoraEngine.localTracks || [];
+  const toPublish = list.filter(t => !alreadyUp.includes(t));
+  if (toPublish.length) await agoraEngine.publish(toPublish);
+}
+
 // After leave() the SDK holds nothing published, but our local tracks are still
 // alive: put back what was live before the drop.
 async function republishLocalTracks() {
@@ -1368,8 +1491,10 @@ const handleUserUnpublished = (user, mediaType) => {
     // Camera off — keep the tile, show the avatar instead of dropping them.
     if (remoteUsers.value[i].hasAudio) {
       remoteUsers.value[i] = { ...remoteUsers.value[i], hasVideo: false, videoReady: false };
+      detachVideo(user.uid);   // no more video to play into their tile
     } else {
       remoteUsers.value.splice(i, 1);
+      detachVideo(user.uid);
     }
   } else if (mediaType === 'audio') {
     if (remoteUsers.value[i].hasVideo) {
@@ -1893,7 +2018,14 @@ async function teardownAndExit() {
       try { localAudioTrack?.stop(); localVideoTrack?.stop(); } catch (_) { /* noop */ }
       localAudioTrack?.close();
       localVideoTrack?.close();
-      if (agoraEngine) await agoraEngine.leave();
+      localAudioTrack = null;
+      localVideoTrack = null;
+      for (const key of [...attached.keys()]) detachVideo(key);
+      if (agoraEngine) {
+        await agoraEngine.leave();
+        agoraEngine.removeAllListeners();   // .leave() tears down the connection, not the 7 handlers registered in initializeAgora()
+        agoraEngine = null;
+      }
     }
   } catch (err) {
     console.error('Teardown error:', err);

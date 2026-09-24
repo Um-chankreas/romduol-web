@@ -1,7 +1,7 @@
 
 import axios from 'axios'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.8.41:5001/api'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.114:5001/api'
 
 // Same host as the REST API, without the `/api` suffix — Socket.IO mounts at
 // `<origin>/socket.io` on the backend HTTP server.

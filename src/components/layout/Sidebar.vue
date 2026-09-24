@@ -68,9 +68,28 @@
         >
           <span>📄</span> LaTeX to Text
         </router-link>
-        <a href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition">
+        <router-link
+          to="/tools/trim-video"
+          :class="[
+            'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
+            route.path === '/tools/trim-video'
+              ? 'bg-[#006A3A] text-white shadow-sm'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+          ]"
+        >
+          <span>✂️</span> Trim Video
+        </router-link>
+        <router-link
+          to="/schedule"
+          :class="[
+            'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
+            route.path === '/schedule'
+              ? 'bg-[#006A3A] text-white shadow-sm'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+          ]"
+        >
           <span>📅</span> Schedule
-        </a>
+        </router-link>
         <a href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition">
           <span>📁</span> Resources
         </a>

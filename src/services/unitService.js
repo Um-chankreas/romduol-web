@@ -1,4 +1,5 @@
 import api from './axios'
+import { videoContentType, readVideoDuration, resolveUploadUrl, putToSignedUrl } from './lessonService'
 
 // Units (a.k.a. sections) live inside a chapter (a `lessons` row). Content is
 // Markdown for every subject — plain prose for history, Markdown + $LaTeX$ for
@@ -75,6 +76,37 @@ export const unitService = {
     // placeholder into an actual diagram. Returns { dataUrl }.
     async renderTikzFigure(source) {
         const response = await api.post('/units/render-tikz', { source })
+        return response.data
+    },
+
+    // ---- Unit video ---------------------------------------------------
+    // Same direct-to-storage flow as lessonService.uploadLessonVideo (a chapter's
+    // own video): ask for a signed URL, upload the file straight to storage,
+    // then record the path on the unit. `onProgress(percent)` fires during the
+    // direct upload. Returns the updated unit (with a public `video_url`).
+    async uploadUnitVideo(unitId, file, { onProgress } = {}) {
+        const contentType = videoContentType(file)
+        if (!contentType) {
+            throw new Error('Unsupported video type. Use MP4, MOV, WebM, M4V or MKV.')
+        }
+
+        const urlRes = await api.post(`/units/${unitId}/video/upload-url`, {
+            content_type: contentType
+        })
+        const { path } = urlRes.data.data
+
+        await putToSignedUrl(resolveUploadUrl(urlRes.data.data), file, contentType, onProgress)
+
+        const duration_seconds = await readVideoDuration(file)
+        const attachRes = await api.post(`/units/${unitId}/video`, {
+            path,
+            ...(duration_seconds ? { duration_seconds } : {})
+        })
+        return attachRes.data
+    },
+
+    async removeUnitVideo(unitId) {
+        const response = await api.delete(`/units/${unitId}/video`)
         return response.data
     },
 }

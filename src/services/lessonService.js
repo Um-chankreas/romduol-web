@@ -13,7 +13,8 @@ const VIDEO_MIME_BY_EXT = {
 }
 const ALLOWED_VIDEO_MIMES = new Set(Object.values(VIDEO_MIME_BY_EXT))
 
-const videoContentType = (file) => {
+// Exported for unitService's own video upload — same allowed formats.
+export const videoContentType = (file) => {
     if (file.type && ALLOWED_VIDEO_MIMES.has(file.type)) return file.type
     const ext = file.name.split('.').pop()?.toLowerCase()
     return VIDEO_MIME_BY_EXT[ext] || null
@@ -52,7 +53,7 @@ export const readVideoDuration = (file) => new Promise((resolve) => {
 // Resolve the absolute Supabase URL to PUT the file to. Prefers the backend's
 // `upload_url`; falls back to deriving it from `signed_url` (a bare path) +
 // the origin of `public_url` for backends that don't send `upload_url` yet.
-const resolveUploadUrl = ({ upload_url, signed_url, public_url }) => {
+export const resolveUploadUrl = ({ upload_url, signed_url, public_url }) => {
     for (const candidate of [upload_url, signed_url]) {
         if (candidate && /^https?:\/\//i.test(candidate)) return candidate
     }
@@ -64,7 +65,9 @@ const resolveUploadUrl = ({ upload_url, signed_url, public_url }) => {
     return upload_url || null
 }
 
-const putToSignedUrl = (uploadUrl, file, contentType, onProgress) => {
+// Exported so unitService's own video upload (unit-level, not chapter-level)
+// can reuse the same direct-to-storage mechanics instead of duplicating them.
+export const putToSignedUrl = (uploadUrl, file, contentType, onProgress) => {
     if (!uploadUrl) {
         throw new Error('No upload URL returned by the server — restart the API so it sends `upload_url`.')
     }
