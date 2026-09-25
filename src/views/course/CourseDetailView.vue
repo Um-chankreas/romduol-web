@@ -119,6 +119,17 @@ const fetchAssignments = async () => {
   }
 }
 
+// Enrolled students + paid/unpaid (live-class subscription) status for the
+// Students tab.
+const fetchRoster = async () => {
+  try {
+    const res = await courseService.getCourseRoster(route.params.id)
+    enrolledStudents.value = res.data?.roster || []
+  } catch {
+    /* non-fatal — the tab just shows empty */
+  }
+}
+
 // courseTitle rides along as a query param purely so the assignment editor's
 // breadcrumb can show "My Classes / <class> / …" without an extra fetch.
 const goToCreateAssignment = () => {
@@ -363,6 +374,7 @@ const fetchCourseDetails = async ({ silent = false } = {}) => {
     course.value = fetchedCourse
     lessons.value = fetchedCourse?.lessons || []
     fetchAssignments()
+    fetchRoster()
   } catch (err) {
     if (!silent) {
       error.value = err.response?.data?.message || err.response?.data?.error || 'Failed to load course details.'
@@ -893,6 +905,16 @@ onMounted(() => {
                           <p class="text-[11px] text-slate-600 dark:text-slate-400">{{ student.email }}</p>
                         </div>
                       </div>
+                      <span
+                        :class="[
+                          'px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide shrink-0',
+                          student.paid
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                        ]"
+                      >
+                        {{ student.paid ? 'Paid' : 'Unpaid' }}
+                      </span>
                     </div>
                   </div>
                 </div>

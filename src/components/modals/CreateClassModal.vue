@@ -60,6 +60,14 @@
             <label :class="labelCls">Category</label>
             <input v-model="category" type="text" placeholder="e.g. Mathematics, Grade 10" :disabled="creating" :class="inputCls" />
           </div>
+
+          <div v-if="showTeacherPicker">
+            <label :class="labelCls">Teacher <span class="text-red-500">*</span></label>
+            <select v-model="teacherId" :disabled="creating" :class="inputCls">
+              <option value="" disabled>Select the teacher who owns this class</option>
+              <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.name }} ({{ t.email }})</option>
+            </select>
+          </div>
         </section>
 
         <!-- ── Appearance ────────────────────────────────────────── -->
@@ -210,6 +218,10 @@ const props = defineProps({
   error: { type: String, default: '' },
   // When provided, the drawer switches to edit mode and prefills these values.
   course: { type: Object, default: null },
+  // Admin/super_admin only: [{ id, name, email }] — a course they create or
+  // edit needs an owning teacher, since it isn't their own to teach.
+  teachers: { type: Array, default: () => [] },
+  showTeacherPicker: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['close', 'create', 'save'])
@@ -237,6 +249,7 @@ const icon = ref('📚')
 const color = ref('#006A3A')
 const isFree = ref(false)
 const chapters = ref([''])
+const teacherId = ref('')
 
 watch(
   () => props.course,
@@ -247,6 +260,7 @@ watch(
     icon.value = c?.icon || '📚'
     color.value = c?.color || '#006A3A'
     isFree.value = !!c?.is_free
+    teacherId.value = c?.teacher_id || c?.teacher?.id || ''
   },
   { immediate: true },
 )
@@ -261,6 +275,7 @@ const accessOff = 'border-slate-200 dark:border-slate-700 text-slate-500'
 
 const submit = (openAfter) => {
   if (!title.value.trim()) return
+  if (props.showTeacherPicker && !teacherId.value) return
   const payload = {
     title: title.value.trim(),
     description: description.value.trim(),
@@ -268,6 +283,7 @@ const submit = (openAfter) => {
     color: color.value,
     icon: icon.value,
     is_free: isFree.value,
+    ...(props.showTeacherPicker ? { teacher_id: teacherId.value } : {}),
   }
   if (isEdit.value) {
     emit('save', { id: props.course.id, ...payload })

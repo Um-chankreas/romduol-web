@@ -24,6 +24,7 @@
       <!-- Navigation Links -->
       <nav class="space-y-1.5">
         <router-link
+          v-if="!isStudent"
           to="/dashboard"
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
@@ -58,6 +59,19 @@
           <span>🎓</span> Student Management
         </router-link>
         <router-link
+          v-if="isSuperAdmin"
+          to="/roles"
+          :class="[
+            'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
+            route.path === '/roles'
+              ? 'bg-[#006A3A] text-white shadow-sm'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+          ]"
+        >
+          <span>🔑</span> Roles & Permissions
+        </router-link>
+        <router-link
+          v-if="isAdmin"
           to="/tools/latex-to-text"
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
@@ -69,6 +83,7 @@
           <span>📄</span> LaTeX to Text
         </router-link>
         <router-link
+          v-if="isAdmin"
           to="/tools/trim-video"
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
@@ -80,6 +95,19 @@
           <span>✂️</span> Trim Video
         </router-link>
         <router-link
+          v-if="isAdmin"
+          to="/tools/compress-video"
+          :class="[
+            'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
+            route.path === '/tools/compress-video'
+              ? 'bg-[#006A3A] text-white shadow-sm'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+          ]"
+        >
+          <span>🗜️</span> Compress Video
+        </router-link>
+        <router-link
+          v-if="!isStudent"
           to="/schedule"
           :class="[
             'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition',
@@ -90,10 +118,10 @@
         >
           <span>📅</span> Schedule
         </router-link>
-        <a href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition">
+        <a v-if="isAdmin" href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition">
           <span>📁</span> Resources
         </a>
-        <a href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition mt-6">
+        <a v-if="isAdmin" href="#" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition mt-6">
           <span>⚙️</span> Settings
         </a>
       </nav>
@@ -116,7 +144,12 @@ import { authService } from '../../services/authService'
 
 const route = useRoute()
 
-const isAdmin = computed(() => authService.getCurrentUser()?.role === 'admin')
+const isAdmin = computed(() => ['admin', 'super_admin'].includes(authService.getCurrentUser()?.role))
+const isSuperAdmin = computed(() => authService.getCurrentUser()?.role === 'super_admin')
+// The web portal is built for teachers/admins; a student account that still
+// logs in here gets only "My Classes" — everything else (Dashboard, tools,
+// Schedule) is hidden and blocked at the router too (see router/index.js).
+const isStudent = computed(() => authService.getCurrentUser()?.role === 'student')
 
 // "My Classes" stays highlighted on every page that belongs to that section —
 // not just the exact "/" list — so it doesn't go dark the moment you open a

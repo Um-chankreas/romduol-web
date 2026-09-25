@@ -22,7 +22,7 @@ const routes = [
         path: '/dashboard',
         name: 'Dashboard',
         component: DashboardView,
-        meta: { requiresAuth: true } // Protected route
+        meta: { requiresAuth: true, roles: ['teacher', 'admin', 'super_admin'] } // Not students
     },
     {
         path: '/live/:id',
@@ -46,25 +46,37 @@ const routes = [
         path: '/students',
         name: 'StudentManagement',
         component: () => import('@/views/admin/StudentManagementView.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] } // Admin-only
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] } // Admin-only
+    },
+    {
+        path: '/roles',
+        name: 'RoleManagement',
+        component: () => import('@/views/admin/RoleManagementView.vue'),
+        meta: { requiresAuth: true, roles: ['super_admin'] } // Super-admin-only
     },
     {
         path: '/tools/latex-to-text',
         name: 'LatexToText',
         component: () => import('@/views/tools/LatexConverterView.vue'),
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
     },
     {
         path: '/tools/trim-video',
         name: 'TrimVideo',
         component: () => import('@/views/tools/TrimVideoView.vue'),
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+    },
+    {
+        path: '/tools/compress-video',
+        name: 'CompressVideo',
+        component: () => import('@/views/tools/CompressVideoView.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
     },
     {
         path: '/schedule',
         name: 'Schedule',
         component: () => import('@/views/schedule/ScheduleView.vue'),
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, roles: ['teacher', 'admin', 'super_admin'] } // Not students
     },
     {
         path: '/privacy-policy',

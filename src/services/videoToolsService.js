@@ -30,4 +30,33 @@ export const videoToolsService = {
             throw err
         }
     },
+
+    // Re-encodes `file` to shrink it (unlike trim, this is lossy — that's the
+    // point). `quality`: 'high' | 'balanced' (default) | 'small'. Resolves
+    // { blob, originalSize, compressedSize }.
+    async compress(file, quality = 'balanced', { onUploadProgress } = {}) {
+        const form = new FormData()
+        form.append('video', file)
+        form.append('quality', quality)
+        try {
+            const res = await api.post('/video-tools/compress', form, {
+                responseType: 'blob',
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress,
+            })
+            return {
+                blob: res.data,
+                originalSize: Number(res.headers['x-original-size']) || file.size,
+                compressedSize: Number(res.headers['x-compressed-size']) || res.data.size,
+            }
+        } catch (err) {
+            if (err.response?.data instanceof Blob) {
+                try {
+                    const body = JSON.parse(await err.response.data.text())
+                    if (body?.error) err.message = body.error
+                } catch { /* not JSON — keep axios' message */ }
+            }
+            throw err
+        }
+    },
 }

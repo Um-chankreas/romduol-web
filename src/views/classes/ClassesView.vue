@@ -8,6 +8,8 @@ import { courseService } from '../../services/courseService.js';
 import { lessonService } from '../../services/lessonService.js';
 import { liveClassService } from '../../services/liveClassService.js';
 import { classScheduleService } from '../../services/classScheduleService.js';
+import { teacherService } from '../../services/teacherService.js';
+import { authService } from '../../services/authService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
@@ -16,6 +18,21 @@ import ClassCard from '../../components/classes/ClassCard.vue';
 import ConfirmModal from '../../components/modals/ConfirmModal.vue';
 import CreateClassModal from '../../components/modals/CreateClassModal.vue';
 const router = useRouter();
+
+// Admin/super_admin creates/edits a course ON BEHALF OF a teacher, so the
+// modal needs a teacher to assign it to — teachers themselves own whatever
+// they create, no picker needed.
+const isAdminRole = ['admin', 'super_admin'].includes(authService.getCurrentUser()?.role);
+const teacherOptions = ref([]);
+const fetchTeacherOptions = async () => {
+  if (!isAdminRole) return;
+  try {
+    const { teachers } = await teacherService.listTeachers({ limit: 100 });
+    teacherOptions.value = teachers;
+  } catch {
+    /* non-fatal — the picker just shows empty */
+  }
+};
 
 const navigateToDetails = (courseId) => {
   router.push(`/courses/${courseId}`);
@@ -86,6 +103,7 @@ const fetchSchedules = async () => {
 onMounted(() => {
   fetchCourses();
   fetchSchedules();
+  fetchTeacherOptions();
 });
 
 // This view is kept alive (see App.vue) so navigating back to it doesn't
@@ -157,12 +175,12 @@ const closeCreateModal = () => {
   showCreateModal.value = false;
 };
 
-const handleCreateCourse = async ({ title, description, category, color, icon, is_free, chapters = [], openAfter = false }) => {
+const handleCreateCourse = async ({ title, description, category, color, icon, is_free, teacher_id, chapters = [], openAfter = false }) => {
   try {
     creatingCourse.value = true;
     createError.value = '';
 
-    const response = await courseService.createCourse(title, description, category, color, icon, null, is_free);
+    const response = await courseService.createCourse(title, description, category, color, icon, null, is_free, teacher_id);
     const newCourse = response.data?.course || response.course || response.data || response;
 
     // Create any chapters the teacher typed, in order.
@@ -527,6 +545,8 @@ const handleJoinClass = async () => {
       v-if="showCreateModal"
       :creating="creatingCourse"
       :error="createError"
+      :show-teacher-picker="isAdminRole"
+      :teachers="teacherOptions"
       @close="closeCreateModal"
       @create="handleCreateCourse"
     />
@@ -537,6 +557,8 @@ const handleJoinClass = async () => {
       :course="courseToEdit"
       :creating="savingCourse"
       :error="editError"
+      :show-teacher-picker="isAdminRole"
+      :teachers="teacherOptions"
       @close="closeEditModal"
       @save="handleUpdateCourse"
     />
