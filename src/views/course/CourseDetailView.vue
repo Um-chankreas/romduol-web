@@ -10,10 +10,13 @@ import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
 import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
 import ClassScheduleCard from '@/components/classes/ClassScheduleCard.vue'
+import CourseStudentsProgress from '@/components/insights/CourseStudentsProgress.vue'
+import { authService } from '@/services/authService'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
 import { unitService } from '@/services/unitService'
 import { assignmentService } from '@/services/assignmentService'
+import { insightsService } from '@/services/insightsService'
 
 defineOptions({ name: 'CourseDetailView' })
 
@@ -35,10 +38,11 @@ const allQuizzes = computed(() =>
     }))
   )
 )
-const enrolledStudents = ref([])
 const loading = ref(true)
 const error = ref(null)
-const activeTab = ref('lessons')
+// ?tab=students (from the dashboard overview) opens straight on that tab.
+const TAB_IDS = ['lessons', 'quizzes', 'assignments', 'students', 'schedule']
+const activeTab = ref(TAB_IDS.includes(route.query.tab) ? route.query.tab : 'lessons')
 
 // Upload Modal States
 const showUploadModal = ref(false)
@@ -96,7 +100,7 @@ const tabs = computed(() => [
   { id: 'lessons', name: 'Lessons', icon: '📖', tint: 'bg-blue-100 dark:bg-blue-950/50', count: lessons.value.length },
   { id: 'quizzes', name: 'Quizzes', icon: '❓', tint: 'bg-rose-100 dark:bg-rose-950/50', count: allQuizzes.value.length },
   { id: 'assignments', name: 'Assignments', icon: '📋', tint: 'bg-violet-100 dark:bg-violet-950/50', count: assignments.value.length },
-  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: enrolledStudents.value.length },
+  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: rosterCount.value },
   { id: 'schedule', name: 'Schedule', icon: '📅', tint: 'bg-amber-100 dark:bg-amber-950/50' }
 ])
 
@@ -136,7 +140,32 @@ const formatDue = (iso) => {
 }
 const isOverdue = (iso) => iso && new Date(iso) < new Date()
 
+// ── Students roster ───────────────────────────────────────────────────────
+// Where every enrolled student is in this course (progress, XP, quizzes,
+// activity). Staff-only on the API, so students never request it.
+const roster = ref(null)
+const rosterLoading = ref(false)
+const rosterError = ref(null)
+// undefined until the roster has loaded, so the tab badge stays hidden.
+const rosterCount = computed(() => roster.value?.students?.length)
 
+const fetchRoster = async ({ silent = false } = {}) => {
+  if (!['teacher', 'admin'].includes(authService.getCurrentUser()?.role)) return
+  try {
+    if (!silent) {
+      rosterLoading.value = true
+      rosterError.value = null
+    }
+    roster.value = await insightsService.getCourseStudents(route.params.id)
+    rosterError.value = null
+  } catch (err) {
+    if (!silent) {
+      rosterError.value = err.response?.data?.error || err.message || 'Failed to load students.'
+    }
+  } finally {
+    if (!silent) rosterLoading.value = false
+  }
+}
 
 
 // Modal Handlers in parent component
@@ -381,7 +410,9 @@ onActivated(() => {
     isFirstActivation = false
     return
   }
+  if (TAB_IDS.includes(route.query.tab)) activeTab.value = route.query.tab
   fetchCourseDetails({ silent: true })
+  fetchRoster({ silent: true })
 })
 
 // Customize Modal Handlers
@@ -452,6 +483,7 @@ const handleSaveCustomization = async () => {
 onMounted(() => {
   if (route.params.id) {
     fetchCourseDetails()
+    fetchRoster()
   }
 })
 </script>
@@ -520,11 +552,11 @@ onMounted(() => {
                     >
                       {{ course.is_free ? '🎁 Free' : '💳 Paid' }}
                     </span>
-                    <span class="flex items-center gap-1.5 text-xs font-medium text-white/85">
+                    <span v-if="rosterCount !== undefined" class="flex items-center gap-1.5 text-xs font-medium text-white/85">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                       </svg>
-                      {{ enrolledStudents.length }} Students Enrolled
+                      {{ rosterCount }} Student{{ rosterCount === 1 ? '' : 's' }} Enrolled
                     </span>
                   </div>
 
@@ -629,7 +661,7 @@ onMounted(() => {
               </div>
 
               <!-- TAB CONTENT -->
-              <div class="lg:col-span-3 space-y-6">
+              <div class="lg:col-span-3 space-y-6 min-w-0">
                 <!-- LESSONS TAB -->
                 <div v-if="activeTab === 'lessons'">
                   <div v-if="lessons.length === 0" class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-[#ffffff] dark:bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center shadow-xs">
@@ -874,28 +906,13 @@ onMounted(() => {
                 </div>
 
                 <!-- STUDENTS TAB -->
-                <div v-else-if="activeTab === 'students'" class="space-y-3">
-                  <div v-if="enrolledStudents.length === 0" class="text-center py-10 text-slate-500">
-                    <p class="text-sm">No students enrolled yet</p>
-                  </div>
-                  <div v-else>
-                    <div
-                      v-for="student in enrolledStudents"
-                      :key="student.id"
-                      class="p-4 rounded-2xl bg-[#ffffff] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between"
-                    >
-                      <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-sm font-bold">
-                          {{ student.name?.charAt(0).toUpperCase() }}
-                        </div>
-                        <div class="text-left">
-                          <p class="text-xs font-bold text-slate-900 dark:text-white">{{ student.name }}</p>
-                          <p class="text-[11px] text-slate-600 dark:text-slate-400">{{ student.email }}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <CourseStudentsProgress
+                  v-else-if="activeTab === 'students'"
+                  :data="roster"
+                  :loading="rosterLoading"
+                  :error="rosterError"
+                  @retry="fetchRoster()"
+                />
 
                 <!-- SCHEDULE TAB -->
                 <ClassScheduleCard

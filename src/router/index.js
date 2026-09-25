@@ -49,6 +49,12 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] } // Admin-only
     },
     {
+        path: '/students/:id/profile',
+        name: 'StudentProfile',
+        component: () => import('@/views/students/StudentProfileView.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'teacher'] } // teachers: own students only (enforced by the API)
+    },
+    {
         path: '/tools/latex-to-text',
         name: 'LatexToText',
         component: () => import('@/views/tools/LatexConverterView.vue'),

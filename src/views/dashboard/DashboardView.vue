@@ -6,12 +6,14 @@ import { authService } from '../../services/authService.js';
 import { courseService } from '../../services/courseService.js';
 import { lessonService } from '../../services/lessonService.js';
 import { analyticsService } from '../../services/analyticsService.js';
+import { insightsService } from '../../services/insightsService.js';
 import { useTheme } from '../../composables/useTheme.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import CreateClassModal from '../../components/modals/CreateClassModal.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
+import StudentProgressOverview from '../../components/insights/StudentProgressOverview.vue';
 
 defineOptions({ name: 'DashboardView' });
 
@@ -41,6 +43,23 @@ const fetchAnalytics = async ({ silent = false } = {}) => {
   }
 };
 
+// ── Student progress overview (where students are, per class) ──────────
+const overview = ref(null);
+const overviewLoading = ref(false);
+const overviewError = ref('');
+
+const fetchOverview = async ({ silent = false } = {}) => {
+  if (!silent) overviewLoading.value = true;
+  overviewError.value = '';
+  try {
+    overview.value = await insightsService.getOverview();
+  } catch (err) {
+    if (!silent) overviewError.value = err.response?.data?.error || err.message || 'Failed to load student progress.';
+  } finally {
+    overviewLoading.value = false;
+  }
+};
+
 const fetchCourses = async ({ silent = false } = {}) => {
   if (!silent) loading.value = true;
   loadError.value = '';
@@ -59,11 +78,13 @@ onActivated(() => {
   if (isFirstActivation) { isFirstActivation = false; return; }
   fetchCourses({ silent: true });
   fetchAnalytics({ silent: true });
+  fetchOverview({ silent: true });
 });
 
 onMounted(() => {
   fetchCourses();
   fetchAnalytics();
+  fetchOverview();
 });
 
 // ── KPI helpers ─────────────────────────────────────────────────────────
@@ -148,6 +169,8 @@ const RISK_TONE = {
 };
 const idleLabel = (n) => (n == null ? '—' : n === 0 ? 'today' : n === 1 ? '1 day ago' : `${n} days ago`);
 const initials = (name) => (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+// Both lists link through to the student's full progress page.
+const studentProfile = (id) => ({ name: 'StudentProfile', params: { id } });
 
 // ── Classes ─────────────────────────────────────────────────────────────
 const recentClasses = computed(() =>
@@ -270,6 +293,14 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
           <SignupsChart :weeks="analytics?.signups_weekly || []" :dark="isDark" />
         </div>
 
+        <!-- Where students are -->
+        <StudentProgressOverview
+          :data="overview"
+          :loading="overviewLoading"
+          :error="overviewError"
+          @retry="fetchOverview()"
+        />
+
         <!-- Improved + At-risk -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <!-- Most improved -->
@@ -283,16 +314,22 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
               Not enough quiz history yet.
             </div>
             <ul v-else class="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
-              <li v-for="s in mostImproved" :key="s.student_id" class="flex items-center gap-3 py-2.5">
-                <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                  <img v-if="s.avatar_url" :src="s.avatar_url" class="w-full h-full object-cover" alt="" />
-                  <span v-else>{{ initials(s.name) }}</span>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ s.name || 'Student' }}</p>
-                  <p class="text-[11px] text-slate-400">{{ s.prior_avg }}% → {{ s.recent_avg }}% · {{ s.quizzes }} quizzes</p>
-                </div>
-                <span class="text-sm font-extrabold text-emerald-600 shrink-0">▲ {{ s.delta }}</span>
+              <li v-for="s in mostImproved" :key="s.student_id">
+                <router-link
+                  :to="studentProfile(s.student_id)"
+                  class="flex items-center gap-3 py-2.5 px-2 -mx-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer"
+                  title="View progress"
+                >
+                  <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                    <img v-if="s.avatar_url" :src="s.avatar_url" class="w-full h-full object-cover" alt="" />
+                    <span v-else>{{ initials(s.name) }}</span>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ s.name || 'Student' }}</p>
+                    <p class="text-[11px] text-slate-400">{{ s.prior_avg }}% → {{ s.recent_avg }}% · {{ s.quizzes }} quizzes</p>
+                  </div>
+                  <span class="text-sm font-extrabold text-emerald-600 shrink-0">▲ {{ s.delta }}</span>
+                </router-link>
               </li>
             </ul>
           </div>
@@ -308,21 +345,27 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
               Everyone's on track 🎉
             </div>
             <ul v-else class="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
-              <li v-for="s in atRisk" :key="s.student_id" class="flex items-center gap-3 py-2.5">
-                <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0 overflow-hidden">
-                  <img v-if="s.avatar_url" :src="s.avatar_url" class="w-full h-full object-cover" alt="" />
-                  <span v-else>{{ initials(s.name) }}</span>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ s.name || 'Student' }}</p>
-                  <p class="text-[11px] text-slate-400">
-                    <template v-if="s.reason === 'declining'">Avg {{ s.recent_avg }}% ({{ s.delta }} pts)</template>
-                    <template v-else>Last active {{ idleLabel(s.days_inactive) }}</template>
-                  </p>
-                </div>
-                <span :class="['text-[10px] font-bold px-2 py-1 rounded shrink-0', RISK_TONE[s.reason] || RISK_TONE.never_started]">
-                  {{ RISK_LABEL[s.reason] || s.reason }}
-                </span>
+              <li v-for="s in atRisk" :key="s.student_id">
+                <router-link
+                  :to="studentProfile(s.student_id)"
+                  class="flex items-center gap-3 py-2.5 px-2 -mx-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer"
+                  title="View progress"
+                >
+                  <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                    <img v-if="s.avatar_url" :src="s.avatar_url" class="w-full h-full object-cover" alt="" />
+                    <span v-else>{{ initials(s.name) }}</span>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ s.name || 'Student' }}</p>
+                    <p class="text-[11px] text-slate-400">
+                      <template v-if="s.reason === 'declining'">Avg {{ s.recent_avg }}% ({{ s.delta }} pts)</template>
+                      <template v-else>Last active {{ idleLabel(s.days_inactive) }}</template>
+                    </p>
+                  </div>
+                  <span :class="['text-[10px] font-bold px-2 py-1 rounded shrink-0', RISK_TONE[s.reason] || RISK_TONE.never_started]">
+                    {{ RISK_LABEL[s.reason] || s.reason }}
+                  </span>
+                </router-link>
               </li>
             </ul>
           </div>
