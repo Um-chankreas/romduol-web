@@ -219,6 +219,7 @@ onMounted(() => {
 
 // ================= helpers =================
 const initialOf = (name) => (name || '?').trim().charAt(0).toUpperCase();
+const studentProfile = (s) => ({ name: 'StudentProfile', params: { id: s.id } });
 const brokenAvatars = reactive(new Set());
 const formatDate = (d) => {
   if (!d) return '—';
@@ -464,7 +465,12 @@ const restore = async (s) => {
                     :class="['transition', student.is_active === false ? 'opacity-50' : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30']"
                   >
                     <td class="px-4 py-3">
-                      <div class="flex items-center gap-3">
+                      <!-- Name opens the student's progress profile -->
+                      <router-link
+                        :to="studentProfile(student)"
+                        class="group flex items-center gap-3 min-w-0 cursor-pointer"
+                        title="View progress"
+                      >
                         <img
                           v-if="student.avatar_url && !brokenAvatars.has(student.avatar_url)"
                           :src="student.avatar_url"
@@ -477,12 +483,12 @@ const restore = async (s) => {
                         </div>
                         <div class="min-w-0">
                           <p class="font-semibold text-slate-900 dark:text-white truncate flex items-center gap-1.5">
-                            {{ student.name }}
+                            <span class="truncate group-hover:text-[#006A3A] dark:group-hover:text-emerald-400 group-hover:underline">{{ student.name }}</span>
                             <span v-if="student.is_active === false" class="text-[10px] font-bold text-red-500 uppercase">deactivated</span>
                           </p>
                           <p class="text-xs text-slate-500 dark:text-slate-400 truncate">{{ student.email || student.phone || 'No contact' }}</p>
                         </div>
-                      </div>
+                      </router-link>
                     </td>
 
                     <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -522,6 +528,14 @@ const restore = async (s) => {
 
                     <td class="px-4 py-3">
                       <div class="flex items-center justify-end gap-1">
+                        <router-link
+                          :to="studentProfile(student)"
+                          class="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition cursor-pointer"
+                          title="View progress"
+                          aria-label="View progress"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        </router-link>
                         <button
                           @click="openSubscription(student)"
                           class="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition cursor-pointer"
