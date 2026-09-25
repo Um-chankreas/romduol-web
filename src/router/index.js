@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { authService } from '../services/authService' // Update path to match your authService file
+import { permissionsService } from '../services/permissionsService'
 
 import ClassesView from '../views/classes/ClassesView.vue'
 import DashboardView from '../views/dashboard/DashboardView.vue'
@@ -22,7 +23,11 @@ const routes = [
         path: '/dashboard',
         name: 'Dashboard',
         component: DashboardView,
-        meta: { requiresAuth: true, roles: ['teacher', 'admin', 'super_admin'] } // Not students
+        // No `roles` here on purpose — an admin can grant/revoke this per
+        // individual user (see permissionsService.js), which a role list
+        // can't express. `feature` is checked against that per-user map,
+        // which itself falls back to a role default (students: none).
+        meta: { requiresAuth: true, feature: 'dashboard' }
     },
     {
         path: '/live/:id',
@@ -52,31 +57,43 @@ const routes = [
         path: '/roles',
         name: 'RoleManagement',
         component: () => import('@/views/admin/RoleManagementView.vue'),
-        meta: { requiresAuth: true, roles: ['super_admin'] } // Super-admin-only
+        // Both can open the page; role changes and admin-account creation
+        // inside it stay super_admin-only (enforced by the page itself and
+        // the backend) — a plain admin's version only lets them toggle
+        // per-user feature permissions for teacher/student accounts.
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+    },
+    {
+        path: '/roles/permissions',
+        name: 'RolePermissions',
+        component: () => import('@/views/admin/RolePermissionsView.vue'),
+        // Same access as /roles — editing the matrix is super_admin-only,
+        // enforced by the page itself and the backend.
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
     },
     {
         path: '/tools/latex-to-text',
         name: 'LatexToText',
         component: () => import('@/views/tools/LatexConverterView.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+        meta: { requiresAuth: true, feature: 'latex_to_text' }
     },
     {
         path: '/tools/trim-video',
         name: 'TrimVideo',
         component: () => import('@/views/tools/TrimVideoView.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+        meta: { requiresAuth: true, feature: 'trim_video' }
     },
     {
         path: '/tools/compress-video',
         name: 'CompressVideo',
         component: () => import('@/views/tools/CompressVideoView.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+        meta: { requiresAuth: true, feature: 'compress_video' }
     },
     {
         path: '/schedule',
         name: 'Schedule',
         component: () => import('@/views/schedule/ScheduleView.vue'),
-        meta: { requiresAuth: true, roles: ['teacher', 'admin', 'super_admin'] } // Not students
+        meta: { requiresAuth: true, feature: 'schedule' }
     },
     {
         path: '/privacy-policy',
@@ -134,23 +151,39 @@ const router = createRouter({
 })
 
 // Navigation Guard to enforce auth check on every route change
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     const loggedIn = authService.isAuthenticated()
 
     if (to.meta.requiresAuth && !loggedIn) {
         // Redirect unauthenticated user trying to access protected route to /login
         next('/login')
-    } else if (to.meta.requiresGuest && loggedIn) {
+        return
+    }
+    if (to.meta.requiresGuest && loggedIn) {
         // Redirect authenticated user trying to access /login back to /
         next('/')
-    } else if (to.meta.roles && loggedIn) {
+        return
+    }
+    if (to.meta.roles && loggedIn) {
         // Role-gated route: bounce anyone without a matching role back home.
         const role = authService.getCurrentUser()?.role
-        next(to.meta.roles.includes(role) ? undefined : '/')
-    } else {
-        // Allow navigation
-        next()
+        if (!to.meta.roles.includes(role)) {
+            next('/')
+            return
+        }
     }
+    if (to.meta.feature && loggedIn) {
+        // Per-user feature toggle on top of the role check above — an admin
+        // can grant/revoke this specific page for this specific account (see
+        // permissionsService.js / lms-backend src/utils/permissions.js).
+        const permissions = await permissionsService.getPermissions()
+        if (!permissions[to.meta.feature]) {
+            next('/')
+            return
+        }
+    }
+    // Allow navigation
+    next()
 })
 
 export default router
