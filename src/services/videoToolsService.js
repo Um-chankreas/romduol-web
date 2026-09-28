@@ -34,22 +34,44 @@ export const videoToolsService = {
     // Re-encodes `file` to shrink it (unlike trim, this is lossy — that's the
     // point). `quality`: 'high' | 'balanced' (default) | 'small'. Resolves
     // { blob, originalSize, compressedSize }.
-    async compress(file, quality = 'balanced', { onUploadProgress } = {}) {
+    //
+    // Runs as a server-side job so encoding progress can be shown: upload
+    // (onUploadProgress), then poll the job (onProcessProgress(percent 0-100)),
+    // then fetch the result (onDownloadProgress).
+    async compress(file, quality = 'balanced', { onUploadProgress, onProcessProgress, onDownloadProgress } = {}) {
         const form = new FormData()
         form.append('video', file)
         form.append('quality', quality)
         try {
-            const res = await api.post('/video-tools/compress', form, {
-                responseType: 'blob',
+            const { data: { jobId } } = await api.post('/video-tools/compress-jobs', form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress,
             })
+
+            let job
+            for (;;) {
+                const { data } = await api.get(`/video-tools/compress-jobs/${jobId}`)
+                job = data
+                onProcessProgress?.(job.percent || 0)
+                if (job.status === 'done') break
+                if (job.status === 'error') throw new Error(job.error || 'Compression failed.')
+                await new Promise((r) => setTimeout(r, 2000))
+            }
+
+            const res = await api.get(`/video-tools/compress-jobs/${jobId}/file`, {
+                responseType: 'blob',
+                onDownloadProgress,
+            })
             return {
                 blob: res.data,
-                originalSize: Number(res.headers['x-original-size']) || file.size,
-                compressedSize: Number(res.headers['x-compressed-size']) || res.data.size,
+                originalSize: job.originalSize || file.size,
+                compressedSize: job.compressedSize || res.data.size,
             }
         } catch (err) {
+            // A server restart mid-job loses it — say so rather than "404".
+            if (err.response?.status === 404 && !(err.response.data instanceof Blob)) {
+                err.message = err.response.data?.error || err.message
+            }
             if (err.response?.data instanceof Blob) {
                 try {
                     const body = JSON.parse(await err.response.data.text())

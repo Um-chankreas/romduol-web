@@ -18,7 +18,7 @@ defineOptions({ name: 'VideoEditorView' })
 // its own feature permission (compress_video / trim_video); merge rides on
 // trim_video, same as the server's /merge route.
 
-const MAX_BYTES = 3 * 1024 * 1024 * 1024 // matches the server's upload limit
+const MAX_BYTES = 8 * 1024 * 1024 * 1024 // matches the server's upload limit (videoTools.routes.js)
 const MAX_CLIPS = 20
 const MAX_MERGE_FILES = 10 // matches the server
 
@@ -55,8 +55,26 @@ const rows = ref([newRow()])
 const trimmed = ref(null) // { url, name, size }
 
 const busy = ref(false)
-const stage = ref('') // 'uploading' | 'processing'
+const stage = ref('') // 'uploading' | 'processing' | 'downloading'
 const uploadPct = ref(0)
+const processPct = ref(null) // server-side % (compress only); null = unknown, show a pulsing bar
+const downloadPct = ref(0)
+let processStartedAt = 0
+
+// "about 6 min left", from how fast the percentage has moved so far.
+const timeLeft = computed(() => {
+  const pct = processPct.value
+  if (pct == null || pct < 3 || !processStartedAt) return ''
+  const elapsed = (Date.now() - processStartedAt) / 1000
+  const left = (elapsed / pct) * (100 - pct)
+  if (left < 60) return 'less than a minute left'
+  return `about ${Math.round(left / 60)} min left`
+})
+const barWidth = computed(() => {
+  if (stage.value === 'downloading') return downloadPct.value
+  if (stage.value === 'processing') return processPct.value ?? 100
+  return uploadPct.value
+})
 const error = ref('')
 
 // ── formatting ───────────────────────────────────────────────────────────────
@@ -190,6 +208,9 @@ const withProgress = async (fn, fallbackMsg) => {
   busy.value = true
   stage.value = 'uploading'
   uploadPct.value = 0
+  processPct.value = null
+  processStartedAt = 0
+  downloadPct.value = 0
   error.value = ''
   try {
     await fn({
@@ -198,9 +219,23 @@ const withProgress = async (fn, fallbackMsg) => {
         uploadPct.value = Math.round((e.loaded / e.total) * 100)
         if (uploadPct.value >= 100) stage.value = 'processing'
       },
+      // Only compress reports these (it runs as a polled server job).
+      onProcessProgress: (pct) => {
+        stage.value = 'processing'
+        if (!processStartedAt) processStartedAt = Date.now()
+        processPct.value = pct
+      },
+      onDownloadProgress: (e) => {
+        stage.value = 'downloading'
+        if (e.total) downloadPct.value = Math.round((e.loaded / e.total) * 100)
+      },
     })
   } catch (err) {
-    error.value = err.message || fallbackMsg
+    // axios says just "Network Error" when the connection drops mid-upload —
+    // typically the server rejecting an oversized file or restarting.
+    error.value = err.message === 'Network Error'
+      ? 'Lost the connection to the server. Check that it’s running (and was restarted after updates), then try again.'
+      : err.message || fallbackMsg
   } finally {
     busy.value = false
     stage.value = ''
@@ -678,18 +713,28 @@ const inputCls = 'w-24 px-2.5 py-1.5 border border-slate-300 dark:border-slate-7
           </section>
 
           <!-- Progress -->
-          <div v-if="busy" class="space-y-1.5 max-w-md">
-            <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+          <div v-if="busy" class="space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3.5">
+            <div class="flex items-baseline justify-between gap-3 text-xs">
+              <span class="font-semibold text-slate-700 dark:text-slate-200">
+                <template v-if="stage === 'uploading'">Step 1 of {{ step === 'compress' ? 3 : 2 }} · Uploading</template>
+                <template v-else-if="stage === 'processing'">
+                  Step 2 of {{ step === 'compress' ? 3 : 2 }} · {{ step === 'compress' ? 'Compressing' : 'Cutting your clips' }}
+                </template>
+                <template v-else>Step 3 of 3 · Fetching the result</template>
+              </span>
+              <span class="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                <template v-if="stage === 'processing' && processPct == null">Working…</template>
+                <template v-else>{{ barWidth }}%</template>
+              </span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
               <div
-                :class="['h-full bg-emerald-600 transition-all', stage === 'processing' ? 'animate-pulse' : '']"
-                :style="{ width: (stage === 'processing' ? 100 : uploadPct) + '%' }"
+                :class="['h-full bg-emerald-600 transition-all duration-500', stage === 'processing' && processPct == null ? 'animate-pulse' : '']"
+                :style="{ width: barWidth + '%' }"
               ></div>
             </div>
-            <p class="text-xs text-slate-600 dark:text-slate-400">
-              <template v-if="stage === 'processing'">
-                {{ step === 'compress' ? 'Compressing… this can take a few minutes for long videos.' : 'Cutting your clips…' }}
-              </template>
-              <template v-else>Uploading… {{ uploadPct }}%</template>
+            <p v-if="stage === 'processing' && step === 'compress'" class="text-[11px] text-slate-500 dark:text-slate-400">
+              {{ timeLeft || 'Estimating time left…' }} · you can keep this tab open in the background.
             </p>
           </div>
         </template>
