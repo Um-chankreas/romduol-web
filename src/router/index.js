@@ -84,17 +84,15 @@ const routes = [
         meta: { requiresAuth: true, feature: 'latex_to_text' }
     },
     {
-        path: '/tools/trim-video',
-        name: 'TrimVideo',
-        component: () => import('@/views/tools/TrimVideoView.vue'),
-        meta: { requiresAuth: true, feature: 'trim_video' }
+        // Compress + trim in one flow. Reachable with either feature; the page
+        // hides whichever step the account isn't allowed to use.
+        path: '/tools/video-editor',
+        name: 'VideoEditor',
+        component: () => import('@/views/tools/VideoEditorView.vue'),
+        meta: { requiresAuth: true, feature: ['compress_video', 'trim_video'] }
     },
-    {
-        path: '/tools/compress-video',
-        name: 'CompressVideo',
-        component: () => import('@/views/tools/CompressVideoView.vue'),
-        meta: { requiresAuth: true, feature: 'compress_video' }
-    },
+    { path: '/tools/trim-video', redirect: '/tools/video-editor' },
+    { path: '/tools/compress-video', redirect: '/tools/video-editor' },
     {
         path: '/schedule',
         name: 'Schedule',
@@ -183,7 +181,9 @@ router.beforeEach(async (to, from, next) => {
         // can grant/revoke this specific page for this specific account (see
         // permissionsService.js / lms-backend src/utils/permissions.js).
         const permissions = await permissionsService.getPermissions()
-        if (!permissions[to.meta.feature]) {
+        // An array means "any of these" (e.g. the combined video editor).
+        const features = [].concat(to.meta.feature)
+        if (!features.some(f => permissions[f])) {
             next('/')
             return
         }

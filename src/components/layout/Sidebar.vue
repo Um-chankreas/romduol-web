@@ -102,8 +102,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
-  LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Scissors,
-  Minimize2, CalendarDays, Folder, Settings, ChevronDown, Sparkles,
+  LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Clapperboard,
+  CalendarDays, Folder, Settings, ChevronDown, Sparkles,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { authService } from '../../services/authService'
@@ -164,8 +164,7 @@ const topItems = computed(() => [
 
 const toolItems = computed(() => [
   { to: '/tools/latex-to-text', label: 'LaTeX to Text', icon: FileText, show: permissions.value.latex_to_text },
-  { to: '/tools/trim-video', label: 'Trim Video', icon: Scissors, show: permissions.value.trim_video },
-  { to: '/tools/compress-video', label: 'Compress Video', icon: Minimize2, show: permissions.value.compress_video },
+  { to: '/tools/video-editor', label: 'Video Editor', icon: Clapperboard, show: permissions.value.trim_video || permissions.value.compress_video },
 ].filter(i => i.show).map(i => ({ ...i, active: route.path === i.to })))
 
 const rolesSubItems = [

@@ -123,16 +123,7 @@ const fetchAssignments = async () => {
   }
 }
 
-// Enrolled students + paid/unpaid (live-class subscription) status for the
-// Students tab.
-const fetchRoster = async () => {
-  try {
-    const res = await courseService.getCourseRoster(route.params.id)
-    enrolledStudents.value = res.data?.roster || []
-  } catch {
-    /* non-fatal — the tab just shows empty */
-  }
-}
+
 
 // courseTitle rides along as a query param purely so the assignment editor's
 // breadcrumb can show "My Classes / <class> / …" without an extra fetch.
@@ -918,40 +909,6 @@ onMounted(() => {
                 </div>
 
                 <!-- STUDENTS TAB -->
-<<<<<<< HEAD
-                <div v-else-if="activeTab === 'students'" class="space-y-3">
-                  <div v-if="enrolledStudents.length === 0" class="text-center py-10 text-slate-500">
-                    <p class="text-sm">No students enrolled yet</p>
-                  </div>
-                  <div v-else>
-                    <div
-                      v-for="student in enrolledStudents"
-                      :key="student.id"
-                      class="p-4 rounded-2xl bg-[#ffffff] dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between"
-                    >
-                      <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-sm font-bold">
-                          {{ student.name?.charAt(0).toUpperCase() }}
-                        </div>
-                        <div class="text-left">
-                          <p class="text-xs font-bold text-slate-900 dark:text-white">{{ student.name }}</p>
-                          <p class="text-[11px] text-slate-600 dark:text-slate-400">{{ student.email }}</p>
-                        </div>
-                      </div>
-                      <span
-                        :class="[
-                          'px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide shrink-0',
-                          student.paid
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                        ]"
-                      >
-                        {{ student.paid ? 'Paid' : 'Unpaid' }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-=======
                 <CourseStudentsProgress
                   v-else-if="activeTab === 'students'"
                   :data="roster"
@@ -959,7 +916,6 @@ onMounted(() => {
                   :error="rosterError"
                   @retry="fetchRoster()"
                 />
->>>>>>> 88a824ea844814741f9bdeefcd286dc56158ce33
 
                 <!-- SCHEDULE TAB -->
                 <ClassScheduleCard

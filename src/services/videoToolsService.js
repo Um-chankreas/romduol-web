@@ -59,4 +59,26 @@ export const videoToolsService = {
             throw err
         }
     },
+
+    // Joins `files` (2+, in this order) into one .mp4. Resolves the Blob.
+    async merge(files, { onUploadProgress } = {}) {
+        const form = new FormData()
+        files.forEach((f) => form.append('videos', f))
+        try {
+            const res = await api.post('/video-tools/merge', form, {
+                responseType: 'blob',
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress,
+            })
+            return res.data
+        } catch (err) {
+            if (err.response?.data instanceof Blob) {
+                try {
+                    const body = JSON.parse(await err.response.data.text())
+                    if (body?.error) err.message = body.error
+                } catch { /* not JSON — keep axios' message */ }
+            }
+            throw err
+        }
+    },
 }
