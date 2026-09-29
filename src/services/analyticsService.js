@@ -1,6 +1,6 @@
 import api from './axios'
 
-// Admin-only school analytics for the teacher dashboard.
+// Dashboard analytics — whole school for admins, own classes for teachers.
 // Backend: ../lms-backend/src/routes/admin.routes.js  GET /admin/analytics
 //
 // Shape:

@@ -1,5 +1,5 @@
 <script setup>
-import { onActivated, onMounted, ref } from 'vue';
+import { onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 defineOptions({ name: 'ClassesView' });
@@ -100,11 +100,57 @@ const fetchSchedules = async () => {
   }
 };
 
+// course_id -> id of the live session running for it right now. Drives the
+// card's "Live now · Rejoin" state, so a teacher goes back into the running
+// session instead of starting a second one. Only teachers can start/own live
+// classes (POST /live-classes is teacher-only), so only they fetch it.
+const isTeacherRole = authService.getCurrentUser()?.role === 'teacher';
+const activeLiveByCourse = ref({});
+const fetchActiveLive = async () => {
+  if (!isTeacherRole) return;
+  try {
+    const live = await liveClassService.getMyLiveClasses('active');
+    const map = {};
+    // Newest first from the API — keep the most recent per course. /my
+    // returns the course as a nested `course: { id, ... }`, not `course_id`.
+    live.forEach((lc) => {
+      const courseId = lc.course?.id || lc.course_id;
+      if (courseId && !map[courseId]) map[courseId] = lc.id;
+    });
+    activeLiveByCourse.value = map;
+  } catch {
+    /* non-fatal — cards just show "Start Live Class"; the server still dedupes */
+  }
+};
+// The session opens in another tab; when the teacher comes back here (e.g.
+// after ending it), refresh so the card flips back to "Start Live Class".
+const onWindowFocus = () => fetchActiveLive();
+// Also poll, so a session started or ended elsewhere (phone, another tab)
+// shows up without the teacher having to switch windows.
+let livePoll = null;
+const startLivePoll = () => {
+  if (!isTeacherRole || livePoll) return;
+  livePoll = setInterval(fetchActiveLive, 20000);
+};
+const stopLivePoll = () => {
+  clearInterval(livePoll);
+  livePoll = null;
+};
+
 onMounted(() => {
   fetchCourses();
   fetchSchedules();
   fetchTeacherOptions();
+  fetchActiveLive();
+  window.addEventListener('focus', onWindowFocus);
+  startLivePoll();
 });
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', onWindowFocus);
+  stopLivePoll();
+});
+// Kept alive while on other pages — no need to poll then.
+onDeactivated(stopLivePoll);
 
 // This view is kept alive (see App.vue) so navigating back to it doesn't
 // remount/reload it. Re-fetch quietly on re-activation to keep data fresh
@@ -117,6 +163,8 @@ onActivated(() => {
   }
   fetchCourses({ silent: true });
   fetchSchedules();
+  fetchActiveLive();
+  startLivePoll();
 });
 
 /**
@@ -253,12 +301,24 @@ const handleUpdateCourse = async ({ id, ...data }) => {
  * Teacher: Direct Live Stream Start
  * Triggered directly by @start-live on ClassCard
  */
+const openLiveTab = (liveClassId) => {
+  const routeData = router.resolve({ name: 'LiveStream', params: { id: liveClassId } });
+  window.open(routeData.href, '_blank');
+};
+
 const handleStartLive = async (courseId, title) => {
-  startingCourseId.value = courseId;
+  if (startingCourseId.value) return; // one start at a time — no double-click duplicates
   classesError.value = '';
 
+  // Already live → the card shows a "Live now" label rather than this button,
+  // but guard anyway so nothing can start a second session.
+  if (activeLiveByCourse.value[courseId]) return;
+
+  startingCourseId.value = courseId;
   try {
-    // 1. Create live class using positional arguments: (courseId, title, description, scheduledAt)
+    // 1. Create live class using positional arguments: (courseId, title, description, scheduledAt).
+    //    The server hands back the already-running session instead if one
+    //    exists (e.g. started from another device), so this never duplicates.
     const createRes = await liveClassService.createLiveClass(
       courseId,
       `${title} - Live Session`,
@@ -274,16 +334,13 @@ const handleStartLive = async (courseId, title) => {
       throw new Error('Could not retrieve live class ID from backend response.');
     }
 
-    // 2. Start the live class
-    await liveClassService.startLiveClass(liveClassId);
+    // 2. Start the live class (a no-op for an already-active one — the
+    //    server only notifies students on the scheduled -> active change)
+    if (liveClassData?.status !== 'active') await liveClassService.startLiveClass(liveClassId);
+    activeLiveByCourse.value = { ...activeLiveByCourse.value, [courseId]: liveClassId };
 
-    // 3. Resolve path and open in a new tab
-    const routeData = router.resolve({
-      name: 'LiveStream',
-      params: { id: liveClassId }
-    });
-
-    window.open(routeData.href, '_blank');
+    // 3. Open it in a new tab
+    openLiveTab(liveClassId);
 
   } catch (err) {
     console.error('Failed to start live class:', err);
@@ -403,6 +460,7 @@ const handleJoinClass = async () => {
               :isFree="!!course.is_free"
               :scheduleLabel="scheduleLabelByCourse[course.id] || ''"
               :loading="startingCourseId === course.id"
+              :liveNow="!!activeLiveByCourse[course.id]"
               @start-live="handleStartLive"
               @view-details="navigateToDetails"
               @edit-course="openEditModal"

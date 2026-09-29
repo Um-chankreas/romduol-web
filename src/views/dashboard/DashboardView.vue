@@ -286,7 +286,8 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
               <h2 class="text-base font-bold text-slate-900 dark:text-white">Student growth</h2>
               <p class="text-[11px] text-slate-400">New sign-ups per week · last 12 weeks</p>
             </div>
-            <button @click="openStudents" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline">
+            <!-- Student Management is admin-only; teachers would just be bounced home. -->
+            <button v-if="['admin', 'super_admin'].includes(currentUser?.role)" @click="openStudents" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline">
               All students →
             </button>
           </div>

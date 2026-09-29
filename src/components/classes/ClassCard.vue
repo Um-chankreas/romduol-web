@@ -35,6 +35,18 @@ const props = defineProps({
   scheduleLabel: {
     type: String,
     default: ''
+  },
+  // A live session for this class is running right now — show a "Live now"
+  // label instead of the start button, so a second one can't be started.
+  liveNow: {
+    type: Boolean,
+    default: false
+  },
+  // Start request in flight — disables the button so a double click can't
+  // start two sessions.
+  loading: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -203,15 +215,29 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Live Action Button -->
-      <button 
-        v-if="isLive" 
-        @click="emit('start-live', courseId, title)" 
-        class="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
+      <!-- Already live: just a status label, nothing to click. -->
+      <span
+        v-if="isLive && liveNow"
+        @click.stop
+        title="This class is live right now"
+        class="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 font-bold text-xs shrink-0 whitespace-nowrap select-none"
+      >
+        <span class="relative flex w-2 h-2 shrink-0">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
+          <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
+        </span>
+        <span>Live now</span>
+      </span>
+      <button
+        v-else-if="isLive"
+        @click.stop="emit('start-live', courseId, title)"
+        :disabled="loading"
+        class="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-60 disabled:cursor-wait"
       >
         <svg class="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
           <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
         </svg>
-        <span>Start Live Class</span>
+        <span>{{ loading ? 'Starting…' : 'Start Live Class' }}</span>
       </button>
 
       <!-- View Details Button -->

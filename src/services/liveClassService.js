@@ -18,6 +18,13 @@ export const liveClassService = {
         return response.data
     },
 
+    // Live classes the current user can join (teacher: ones they own).
+    // `status`: e.g. 'active' or 'active,scheduled'.
+    async getMyLiveClasses(status) {
+        const response = await api.get('/live-classes/my', { params: status ? { status } : {} })
+        return response.data?.data?.liveClasses || []
+    },
+
     // Get course live classes
     async getCourseLiveClasses(courseId) {
         const response = await api.get(`/live-classes/course/${courseId}`)

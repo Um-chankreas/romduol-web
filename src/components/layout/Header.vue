@@ -1,12 +1,10 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { useRouter } from 'vue-router';
 import { useTheme } from '../../composables/useTheme';
 import { authService } from '../../services/authService';
 import EditProfileModal from '../modals/EditProfileModal.vue';
 
 const { isDark, toggleTheme } = useTheme();
-const router = useRouter();
 
 const currentUser = ref(authService.getCurrentUser());
 
@@ -64,7 +62,10 @@ const selectLanguage = (code) => {
 const handleLogout = () => {
   showMenu.value = false;
   authService.logout();
-  router.push('/login');
+  // A full page load, not router.push: App.vue's <keep-alive> keeps pages
+  // like My Classes mounted with the previous account's sidebar/header/data,
+  // and the next person to log in would get that cached page back.
+  window.location.href = '/login';
 };
 
 /**
