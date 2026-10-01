@@ -7,25 +7,40 @@ export const videoToolsService = {
     // so this resolves { blob, isZip }. Naming the download is left to the
     // caller — Content-Disposition isn't readable cross-origin without CORS
     // exposing it, and the caller knows the source name and ranges anyway.
-    async trim(file, segments, { onUploadProgress } = {}) {
+    //
+    // Runs as a server-side job (like compress) so progress can be shown:
+    // upload, poll the job (onProcessProgress(percent 0-100)), then fetch.
+    async trim(file, segments, { onUploadProgress, onProcessProgress, onDownloadProgress } = {}) {
         const form = new FormData()
         form.append('video', file)
         form.append('segments', JSON.stringify(segments))
         try {
-            const res = await api.post('/video-tools/trim', form, {
-                responseType: 'blob',
+            const { data: { jobId } } = await api.post('/video-tools/trim-jobs', form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress,
             })
+
+            for (;;) {
+                const { data: job } = await api.get(`/video-tools/trim-jobs/${jobId}`)
+                onProcessProgress?.(job.percent || 0)
+                if (job.status === 'done') break
+                if (job.status === 'error') throw new Error(job.error || 'Trimming failed.')
+                await new Promise((r) => setTimeout(r, 1000))
+            }
+
+            const res = await api.get(`/video-tools/trim-jobs/${jobId}/file`, {
+                responseType: 'blob',
+                onDownloadProgress,
+            })
             return { blob: res.data, isZip: (res.headers['content-type'] || '').includes('zip') }
         } catch (err) {
-            // With responseType 'blob' an error body arrives as a Blob too —
-            // unwrap the server's { error } so the caller gets a real message.
             if (err.response?.data instanceof Blob) {
                 try {
                     const body = JSON.parse(await err.response.data.text())
                     if (body?.error) err.message = body.error
                 } catch { /* not JSON — keep axios' message */ }
+            } else if (err.response?.status === 404 && err.response.data?.error) {
+                err.message = err.response.data.error
             }
             throw err
         }

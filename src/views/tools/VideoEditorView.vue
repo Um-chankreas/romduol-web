@@ -60,15 +60,21 @@ const uploadPct = ref(0)
 const processPct = ref(null) // server-side % (compress only); null = unknown, show a pulsing bar
 const downloadPct = ref(0)
 let processStartedAt = 0
+let uploadStartedAt = 0
 
-// "about 6 min left", from how fast the percentage has moved so far.
+// "about 6 min left", from how fast the current stage has progressed so far.
+const fmtLeft = (sec) => {
+  if (sec < 60) return 'less than a minute left'
+  if (sec < 3600) return `about ${Math.round(sec / 60)} min left`
+  return `about ${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min left`
+}
 const timeLeft = computed(() => {
-  const pct = processPct.value
-  if (pct == null || pct < 3 || !processStartedAt) return ''
-  const elapsed = (Date.now() - processStartedAt) / 1000
-  const left = (elapsed / pct) * (100 - pct)
-  if (left < 60) return 'less than a minute left'
-  return `about ${Math.round(left / 60)} min left`
+  let pct, startedAt
+  if (stage.value === 'uploading') { pct = uploadPct.value; startedAt = uploadStartedAt }
+  else if (stage.value === 'processing') { pct = processPct.value; startedAt = processStartedAt }
+  else return ''
+  if (pct == null || pct < 3 || !startedAt) return ''
+  return fmtLeft(((Date.now() - startedAt) / 1000 / pct) * (100 - pct))
 })
 const barWidth = computed(() => {
   if (stage.value === 'downloading') return downloadPct.value
@@ -210,6 +216,7 @@ const withProgress = async (fn, fallbackMsg) => {
   uploadPct.value = 0
   processPct.value = null
   processStartedAt = 0
+  uploadStartedAt = Date.now()
   downloadPct.value = 0
   error.value = ''
   try {
@@ -219,7 +226,7 @@ const withProgress = async (fn, fallbackMsg) => {
         uploadPct.value = Math.round((e.loaded / e.total) * 100)
         if (uploadPct.value >= 100) stage.value = 'processing'
       },
-      // Only compress reports these (it runs as a polled server job).
+      // Compress and trim report these (they run as polled server jobs).
       onProcessProgress: (pct) => {
         stage.value = 'processing'
         if (!processStartedAt) processStartedAt = Date.now()
@@ -733,7 +740,7 @@ const inputCls = 'w-24 px-2.5 py-1.5 border border-slate-300 dark:border-slate-7
                 :style="{ width: barWidth + '%' }"
               ></div>
             </div>
-            <p v-if="stage === 'processing' && step === 'compress'" class="text-[11px] text-slate-500 dark:text-slate-400">
+            <p v-if="stage === 'uploading' || stage === 'processing'" class="text-[11px] text-slate-500 dark:text-slate-400">
               {{ timeLeft || 'Estimating time left…' }} · you can keep this tab open in the background.
             </p>
           </div>
