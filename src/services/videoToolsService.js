@@ -20,8 +20,10 @@ export const videoToolsService = {
                 onUploadProgress,
             })
 
+            let job
             for (;;) {
-                const { data: job } = await api.get(`/video-tools/trim-jobs/${jobId}`)
+                const { data } = await api.get(`/video-tools/trim-jobs/${jobId}`)
+                job = data
                 onProcessProgress?.(job.percent || 0)
                 if (job.status === 'done') break
                 if (job.status === 'error') throw new Error(job.error || 'Trimming failed.')
@@ -30,7 +32,9 @@ export const videoToolsService = {
 
             const res = await api.get(`/video-tools/trim-jobs/${jobId}/file`, {
                 responseType: 'blob',
-                onDownloadProgress,
+                // A proxy that compresses or chunks the response hides its
+                // length from the browser; the job status knows it.
+                onDownloadProgress: (e) => onDownloadProgress?.({ loaded: e.loaded, total: e.total || job.resultSize }),
             })
             return { blob: res.data, isZip: (res.headers['content-type'] || '').includes('zip') }
         } catch (err) {
@@ -98,14 +102,30 @@ export const videoToolsService = {
     },
 
     // Joins `files` (2+, in this order) into one .mp4. Resolves the Blob.
-    async merge(files, { onUploadProgress } = {}) {
+    // A server-side job like compress/trim: upload, poll (onProcessProgress),
+    // then fetch.
+    async merge(files, { onUploadProgress, onProcessProgress, onDownloadProgress } = {}) {
         const form = new FormData()
         files.forEach((f) => form.append('videos', f))
         try {
-            const res = await api.post('/video-tools/merge', form, {
-                responseType: 'blob',
+            const { data: { jobId } } = await api.post('/video-tools/merge-jobs', form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress,
+            })
+
+            let job
+            for (;;) {
+                const { data } = await api.get(`/video-tools/merge-jobs/${jobId}`)
+                job = data
+                onProcessProgress?.(job.percent || 0)
+                if (job.status === 'done') break
+                if (job.status === 'error') throw new Error(job.error || 'Merging failed.')
+                await new Promise((r) => setTimeout(r, 1500))
+            }
+
+            const res = await api.get(`/video-tools/merge-jobs/${jobId}/file`, {
+                responseType: 'blob',
+                onDownloadProgress: (e) => onDownloadProgress?.({ loaded: e.loaded, total: e.total || job.resultSize }),
             })
             return res.data
         } catch (err) {
@@ -114,6 +134,8 @@ export const videoToolsService = {
                     const body = JSON.parse(await err.response.data.text())
                     if (body?.error) err.message = body.error
                 } catch { /* not JSON — keep axios' message */ }
+            } else if (err.response?.status === 404 && err.response.data?.error) {
+                err.message = err.response.data.error
             }
             throw err
         }

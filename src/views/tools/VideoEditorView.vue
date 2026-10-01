@@ -522,14 +522,23 @@ const inputCls = 'w-24 px-2.5 py-1.5 border border-slate-300 dark:border-slate-7
           </div>
 
           <div v-if="busy" class="space-y-1.5 max-w-md">
+            <div class="flex items-baseline justify-between gap-3 text-xs">
+              <span class="font-semibold text-slate-700 dark:text-slate-200">
+                {{ stage === 'uploading' ? 'Step 1 of 3 · Uploading' : stage === 'processing' ? 'Step 2 of 3 · Joining your videos' : 'Step 3 of 3 · Fetching the result' }}
+              </span>
+              <span class="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                <template v-if="stage === 'processing' && processPct == null">Working…</template>
+                <template v-else>{{ barWidth }}%</template>
+              </span>
+            </div>
             <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
               <div
-                :class="['h-full bg-emerald-600 transition-all', stage === 'processing' ? 'animate-pulse' : '']"
-                :style="{ width: (stage === 'processing' ? 100 : uploadPct) + '%' }"
+                :class="['h-full bg-emerald-600 transition-all duration-500', stage === 'processing' && processPct == null ? 'animate-pulse' : '']"
+                :style="{ width: barWidth + '%' }"
               ></div>
             </div>
-            <p class="text-xs text-slate-600 dark:text-slate-400">
-              {{ stage === 'processing' ? 'Joining your videos…' : `Uploading… ${uploadPct}%` }}
+            <p v-if="stage === 'uploading' || stage === 'processing'" class="text-[11px] text-slate-500 dark:text-slate-400">
+              {{ timeLeft || 'Estimating time left…' }} · you can keep this tab open in the background.
             </p>
           </div>
         </section>
