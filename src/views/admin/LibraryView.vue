@@ -94,12 +94,26 @@ const folderSections = computed(() => {
   return out
 })
 const maxFolderCount = computed(() => Math.max(1, ...folders.value.map(f => f.count)))
-const showFolders = computed(() => kind.value === 'textbook' && openGroup.value === null && !search.value.trim())
+// 'all' skips the folders and shows every textbook at once.
+const showFolders = computed(() => kind.value === 'textbook' && groupBy.value !== 'all' && openGroup.value === null && !search.value.trim())
 const openFolderLabel = computed(() => folders.value.find(f => f.key === openGroup.value)?.label || '')
 
 // ---- shelf: one continuous run of covers, grade then order ----
 const shelfItems = computed(() => [...filteredItems.value].sort((x, y) =>
   (x.grade ?? 99) - (y.grade ?? 99) || x.order_number - y.order_number || x.id.localeCompare(y.id)))
+
+// In "All" the shelf is split under a heading per grade, so a hundred covers
+// stay scannable. Everywhere else it's one untitled run.
+const shelfSections = computed(() => {
+  if (kind.value !== 'textbook' || groupBy.value !== 'all') return [{ key: 'all', title: '', books: shelfItems.value }]
+  const out = []
+  shelfItems.value.forEach(b => {
+    const key = b.grade ?? 'other'
+    if (out.at(-1)?.key !== key) out.push({ key, title: key === 'other' ? 'Other' : `Grade ${key}`, books: [] })
+    out.at(-1).books.push(b)
+  })
+  return out
+})
 
 // Covers are plain paper on purpose: green stays an accent (spine, grade label)
 // so a shelf of 100 books reads as a library, not a wall of colour.
@@ -411,11 +425,11 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
               </button>
             </div>
 
-            <!-- Browse textbooks as folders by grade or by subject -->
+            <!-- Browse textbooks all at once, or as folders by grade or by subject -->
             <div v-if="kind === 'textbook'" class="flex items-center gap-2 pl-4 ml-1 border-l border-slate-200 dark:border-slate-700 py-2">
               <span class="text-xs font-bold text-slate-500 dark:text-slate-400">Browse by</span>
               <div class="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5">
-                <button v-for="g in [{ k: 'grade', l: 'Grade' }, { k: 'subject', l: 'Subject' }]" :key="g.k" type="button" @click="groupBy = g.k"
+                <button v-for="g in [{ k: 'all', l: 'All' }, { k: 'grade', l: 'Grade' }, { k: 'subject', l: 'Subject' }]" :key="g.k" type="button" @click="groupBy = g.k"
                   :class="['px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer',
                     groupBy === g.k ? 'bg-white dark:bg-slate-900 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-500']">{{ g.l }}</button>
               </div>
@@ -496,8 +510,16 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
               </section>
             </div>
 
-            <div v-if="!showFolders" class="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,10rem))] gap-x-5 gap-y-6">
-                <article v-for="b in shelfItems" :key="b.id" class="group relative">
+            <div v-if="!showFolders" class="space-y-8">
+              <section v-for="sec in shelfSections" :key="sec.key">
+                <div v-if="sec.title" class="flex items-center gap-3 mb-3">
+                  <span class="w-1.5 h-6 rounded-full bg-[#ffce04]" />
+                  <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ sec.title }}</h3>
+                  <span class="text-xs font-semibold text-slate-400">{{ sec.books.length }} {{ sec.books.length === 1 ? 'book' : 'books' }}</span>
+                  <span class="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                </div>
+              <div class="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,10rem))] gap-x-5 gap-y-6">
+                <article v-for="b in sec.books" :key="b.id" class="group relative">
                   <!-- Cover -->
                   <div :class="['relative aspect-[3/4] rounded-r-xl rounded-l-md overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white shadow-sm transition duration-200 group-hover:-translate-y-1.5 group-hover:shadow-lg',
                       selected.has(b.id) ? 'ring-4 ring-[#ffce04]' : editing?.id === b.id ? 'ring-4 ring-[#ffce04]/60' : '']">
@@ -538,6 +560,8 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                   <p class="text-[11px] text-slate-400 truncate">{{ size(b.file_size) }} · #{{ b.order_number }}</p>
                 </article>
               </div>
+              </section>
+            </div>
 
             <div v-if="showFolders ? !folders.length : !shelfItems.length" class="py-16 text-center">
               <Library class="w-10 h-10 mx-auto text-slate-300 mb-2" />
