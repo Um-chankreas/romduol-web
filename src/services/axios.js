@@ -25,15 +25,33 @@ api.interceptors.request.use((config) => {
     return Promise.reject(error)
 })
 
+// Requests made before there is a session (or to get one back). Their 401/429
+// mean "wrong password" / "too many attempts" — the page shows that message,
+// so they must not trigger the session-ended redirect below.
+const SESSIONLESS_PATHS = ['/auth/login', '/auth/signup', '/auth/account/restore']
+
+// The backend answers 403 (not 401) when the token itself is bad or the
+// account is gone — see lms-backend src/middleware/auth.js. Any other 403 is
+// an ordinary "you can't do that" and leaves the session alone.
+const SESSION_ENDED_CODES = ['ACCOUNT_NOT_FOUND', 'ACCOUNT_DELETED', 'ACCOUNT_SUSPENDED']
+const isSessionEnded = (response) => {
+    if (response.status === 401) return true
+    if (response.status !== 403) return false
+    const data = response.data || {}
+    return SESSION_ENDED_CODES.includes(data.code) || data.error === 'Invalid or expired token'
+}
+
 // Handle errors
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            // Token expired or invalid
+        const { response, config } = error
+        const sessionless = SESSIONLESS_PATHS.some(p => config?.url?.startsWith(p))
+        if (response && !sessionless && isSessionEnded(response)) {
+            // Token expired / invalid, or the account was removed or suspended
             localStorage.removeItem('token')
             localStorage.removeItem('user')
-            window.location.href = '/login'
+            if (window.location.pathname !== '/login') window.location.href = '/login'
         }
         return Promise.reject(error)
     }

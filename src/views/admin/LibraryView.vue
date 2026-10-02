@@ -110,8 +110,10 @@ const toggleRow = (id) => {
   next.has(id) ? next.delete(id) : next.add(id)
   selected.value = next
 }
-watch(kind, () => { selected.value = new Set() })
 watch(groupBy, () => { openGroup.value = null })
+// Only what's on screen can stay selected — otherwise "Delete N selected"
+// would also delete books ticked in a folder or search you've since left.
+watch([kind, openGroup, search], () => { selected.value = new Set() })
 
 const removeSelected = async () => {
   const ids = [...selected.value]
@@ -246,6 +248,12 @@ const pickFile = (f) => {
     error.value = 'Please choose a PDF file.'
     return
   }
+  // Same limit the server enforces — fail now, not after a long upload.
+  const maxBytes = options.value?.max_bytes
+  if (maxBytes && f.size > maxBytes) {
+    error.value = `This PDF is ${mb(f.size)} MB. The limit is ${Math.round(maxBytes / 1048576)} MB.`
+    return
+  }
   file.value = f
 }
 const onDrop = (e) => { dragging.value = false; pickFile(e.dataTransfer.files?.[0]) }
@@ -274,6 +282,9 @@ const submit = async (overwrite = false) => {
       const result = await libraryService.update(kind.value, editing.value.id, fields)
       // The cover follows its PDF's name, so apply any cover change to the new one.
       const stem = result.name.replace(/\.pdf$/, '')
+      // The rename has happened. If the cover step below fails, a retry must
+      // target the new name, not the old one that no longer exists.
+      editing.value = { ...editing.value, id: stem }
       if (coverBlob.value) await libraryService.setCover(kind.value, stem, coverBlob.value)
       else if (removeExistingCover.value) await libraryService.removeCover(kind.value, stem)
       success.value = result.unchanged && !coverBlob.value && !removeExistingCover.value ? 'Nothing changed.' : `Saved. Now ${result.name}.`

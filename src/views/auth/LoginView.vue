@@ -24,7 +24,13 @@ const handleSubmit = async () => {
     const role = authService.getCurrentUser()?.role;
     router.push(role === 'admin' ? '/students' : '/');
   } catch (err) {
-    error.value = err.response?.data?.message || 'Invalid email or password.';
+    // The API explains 4xx failures in `error` (wrong password, too many
+    // attempts, suspended account). 5xx / network errors get a generic line
+    // rather than raw server internals.
+    const status = err.response?.status;
+    error.value = status >= 400 && status < 500 && err.response.data?.error
+      ? err.response.data.error
+      : status ? 'Something went wrong. Please try again.' : 'Cannot reach the server. Check your connection.';
   } finally {
     loading.value = false;
   }
