@@ -103,7 +103,7 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Clapperboard,
-  CalendarDays, Folder, Settings, ChevronDown, Sparkles,
+  CalendarDays, Folder, Settings, ChevronDown, Sparkles, Library,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { authService } from '../../services/authService'
@@ -160,6 +160,7 @@ const topItems = computed(() => [
   { to: '/', label: 'My Classes', icon: Users, show: true, active: isMyClassesActive.value },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays, show: permissions.value.schedule, active: route.path === '/schedule' },
   { to: '/students', label: 'Student Management', icon: GraduationCap, show: isAdmin.value, active: route.path === '/students' },
+  { to: '/library', label: 'Library', icon: Library, show: isAdmin.value, active: route.path === '/library' },
 ].filter(i => i.show))
 
 const toolItems = computed(() => [

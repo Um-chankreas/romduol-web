@@ -54,6 +54,12 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin', 'super_admin'] } // Admin-only
     },
     {
+        path: '/library',
+        name: 'Library',
+        component: () => import('@/views/admin/LibraryView.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+    },
+    {
         path: '/roles',
         name: 'RoleManagement',
         component: () => import('@/views/admin/RoleManagementView.vue'),
