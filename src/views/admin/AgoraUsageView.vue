@@ -44,6 +44,17 @@ const sortedAccounts = computed(() => [...accounts.value].sort((x, y) => Number(
 
 // Which card's ⋯ menu is open; any outside click closes it.
 const menuFor = ref('')
+// The card row scrolls sideways (which clips absolutely-positioned children),
+// so the menu is fixed-positioned under its button instead.
+const menuPos = reactive({ top: 0, right: 0 })
+const toggleMenu = (e, id) => {
+  if (menuFor.value === id) { menuFor.value = ''; return }
+  const r = e.currentTarget.getBoundingClientRect()
+  menuPos.top = r.bottom + 4
+  menuPos.right = Math.max(8, window.innerWidth - r.right)
+  menuFor.value = id
+}
+const closeMenuNow = () => { menuFor.value = '' }
 const closeMenu = (e) => { if (!e.target.closest?.('.agora-menu')) menuFor.value = '' }
 const maskId = (id) => (id ? `${id.slice(0, 4)}…${id.slice(-4)}` : '—')
 
@@ -64,8 +75,8 @@ const load = async () => {
   }
 }
 const refreshAll = () => Promise.all([loadAccounts(), load()])
-onMounted(() => { refreshAll(); document.addEventListener('click', closeMenu) })
-onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
+onMounted(() => { refreshAll(); document.addEventListener('click', closeMenu); window.addEventListener('resize', closeMenuNow) })
+onBeforeUnmount(() => { document.removeEventListener('click', closeMenu); window.removeEventListener('resize', closeMenuNow) })
 onActivated(() => { if (data.value) refreshAll() })
 
 const usageEl = ref(null)
@@ -256,9 +267,9 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
               </button>
             </div>
             <Skeleton v-if="!accounts.length" class="h-24 w-full" />
-            <div v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div v-else class="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x" @scroll.passive="menuFor = ''">
               <div v-for="a in sortedAccounts" :key="a.id"
-                :class="['relative rounded-2xl border p-4 flex flex-col gap-3 transition',
+                :class="['relative w-72 shrink-0 snap-start rounded-2xl border p-4 flex flex-col gap-3 transition',
                   viewing === a.id ? 'ring-2 ring-offset-2 ring-[#ffce04] dark:ring-offset-slate-900' : '',
                   a.is_active
                     ? 'bg-[#006A3A] border-[#006A3A] text-white shadow-md shadow-emerald-900/10'
@@ -274,11 +285,11 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
 
                     <!-- ⋯ menu -->
                     <div class="agora-menu relative">
-                      <button type="button" @click.stop="menuFor = menuFor === a.id ? '' : a.id" :aria-expanded="menuFor === a.id" :aria-label="t('More options')"
+                      <button type="button" @click.stop="toggleMenu($event, a.id)" :aria-expanded="menuFor === a.id" :aria-label="t('More options')"
                         :class="['p-1.5 rounded-lg cursor-pointer transition', a.is_active ? 'text-white hover:bg-white/15' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800']">
                         <MoreHorizontal class="w-4 h-4" />
                       </button>
-                      <div v-if="menuFor === a.id" class="absolute right-0 top-full mt-1 z-30 w-48 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg py-1 text-slate-700 dark:text-slate-200">
+                      <div v-if="menuFor === a.id" :style="{ top: menuPos.top + 'px', right: menuPos.right + 'px' }" class="fixed z-50 w-48 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg py-1 text-slate-700 dark:text-slate-200">
                         <button type="button" @click="menuFor = ''; view(a)"
                           class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
                           <Activity class="w-3.5 h-3.5" /> {{ t('View usage') }}</button>
@@ -325,7 +336,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                   <CheckCircle2 class="w-4 h-4" /> {{ t('In use for new classes') }}
                 </p>
                 <button v-else-if="isSuperAdmin" type="button" @click="switchTo(a)" :disabled="switching === a.id"
-                  class="mt-auto w-full py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+                  class="mt-auto self-start px-4 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
                   {{ switching === a.id ? t('Switching…') : t('Use this account') }}
                 </button>
               </div>
