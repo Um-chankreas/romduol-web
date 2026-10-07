@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, onActivated } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, onActivated } from 'vue'
 import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, MoreHorizontal, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
@@ -47,15 +47,20 @@ const menuFor = ref('')
 const closeMenu = (e) => { if (!e.target.closest?.('.agora-menu')) menuFor.value = '' }
 const maskId = (id) => (id ? `${id.slice(0, 4)}…${id.slice(-4)}` : '—')
 
+// Only the newest request may update the page, so a slow earlier response
+// can't overwrite what you just clicked.
+let loadSeq = 0
 const load = async () => {
+  const seq = ++loadSeq
   loading.value = true
   error.value = ''
   try {
-    data.value = await agoraUsageService.getUsage(month.value, viewing.value || undefined)
+    const res = await agoraUsageService.getUsage(month.value, viewing.value || undefined)
+    if (seq === loadSeq) data.value = res
   } catch (e) {
-    error.value = errMsg(e, 'Could not load Agora usage.')
+    if (seq === loadSeq) error.value = errMsg(e, 'Could not load Agora usage.')
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 const refreshAll = () => Promise.all([loadAccounts(), load()])
@@ -63,7 +68,14 @@ onMounted(() => { refreshAll(); document.addEventListener('click', closeMenu) })
 onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 onActivated(() => { if (data.value) refreshAll() })
 
-const view = (a) => { viewing.value = a.id; load() }
+const usageEl = ref(null)
+const view = async (a) => {
+  viewing.value = a.id
+  data.value = null            // show the loading state instead of the previous account's numbers
+  await nextTick()
+  usageEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  load()
+}
 
 const switchTo = async (a) => {
   if (!window.confirm(`${t('Switch live classes to')} "${a.label}"?\n\n${t('Classes that start from now on will use this account. A class that is already running keeps its current one.')}`)) return
@@ -247,6 +259,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
             <div v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
               <div v-for="a in sortedAccounts" :key="a.id"
                 :class="['relative rounded-2xl border p-4 flex flex-col gap-3 transition',
+                  viewing === a.id ? 'ring-2 ring-offset-2 ring-[#ffce04] dark:ring-offset-slate-900' : '',
                   a.is_active
                     ? 'bg-[#006A3A] border-[#006A3A] text-white shadow-md shadow-emerald-900/10'
                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700']">
@@ -321,7 +334,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
           </section>
 
           <!-- Quota meter -->
-          <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 sm:p-6">
+          <section ref="usageEl" class="scroll-mt-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 sm:p-6">
             <Skeleton v-if="loading && !data" class="h-24 w-full" />
             <template v-else-if="data">
               <div class="flex flex-wrap items-end justify-between gap-3">
