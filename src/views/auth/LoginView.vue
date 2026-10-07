@@ -11,7 +11,7 @@ import BaseButton from '../../components/ui/BaseButton.vue';
 
 const router = useRouter();
 const { isDark, toggleTheme } = useTheme();
-const { lang, setLang } = useLanguage();
+const { lang, setLang, t } = useLanguage();
 
 const email = ref('');
 const password = ref('');
@@ -34,7 +34,7 @@ const handleSubmit = async () => {
     const status = err.response?.status;
     error.value = status >= 400 && status < 500 && err.response.data?.error
       ? err.response.data.error
-      : status ? 'Something went wrong. Please try again.' : 'Cannot reach the server. Check your connection.';
+      : status ? t('Something went wrong. Please try again.') : t('Cannot reach the server. Check your connection.');
   } finally {
     loading.value = false;
   }
@@ -61,15 +61,6 @@ const handleSubmit = async () => {
     </header>
 
     <div class="flex-1 w-full flex flex-col items-center justify-center p-6">
-    <!-- Theme Switcher -->
-    <button 
-      @click="toggleTheme" 
-      type="button"
-      class="mb-5 px-4 py-1.5 rounded-full border border-emerald-900/10 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:opacity-80 transition cursor-pointer"
-    >
-      {{ isDark ? '☀️ Light Mode' : '🌙 Dark Mode' }}
-    </button>
-
     <!-- Educator Portal Card -->
     <div class="w-full max-w-[560px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[28px] px-10 py-6 shadow-xl text-center flex flex-col items-center">
       
@@ -82,11 +73,11 @@ const handleSubmit = async () => {
         class="text-2xl font-bold tracking-tight" 
         :style="{ color: isDark ? '#ffffff' : '#0f172a' }"
       >
-        Educator Portal
+        {{ t('Educator Portal') }}
       </h1>
 
       <p class="text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
-        Secure access to your classroom management dashboard.
+        {{ t('Secure access to your classroom management dashboard.') }}
       </p>
 
       <!-- API Error Alert -->
@@ -102,7 +93,7 @@ const handleSubmit = async () => {
         <BaseInput 
           v-model="email" 
           type="email"
-          label="Email Address" 
+          :label="t('Email Address')" 
           placeholder="teacher@school.com" 
           required
         />
@@ -110,13 +101,13 @@ const handleSubmit = async () => {
         <BaseInput 
           v-model="password" 
           type="password"
-          label="Password" 
+          :label="t('Password')" 
           placeholder="••••••••"
           required
         >
           <template #action>
             <a href="#" class="text-xs font-semibold text-emerald-800 dark:text-emerald-400 hover:underline">
-              Forgot password?
+              {{ t('Forgot password?') }}
             </a>
           </template>
         </BaseInput>
@@ -126,14 +117,14 @@ const handleSubmit = async () => {
           :disabled="loading"
           class="mt-1 cursor-pointer disabled:opacity-50"
         >
-          <span v-if="loading">Authenticating...</span>
-          <span v-else>Access Dashboard &rarr;</span>
+          <span v-if="loading">{{ t('Authenticating...') }}</span>
+          <span v-else>{{ t('Access Dashboard') }} &rarr;</span>
         </BaseButton>
       </form>
 
       <!-- SSO Footer -->
       <div class="w-full mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 dark:text-slate-500 flex items-center justify-center gap-1.5">
-        <span>🛡️</span> SSO Secured Connection
+        <span>🛡️</span> {{ t('SSO Secured Connection') }}
       </div>
     </div>
     </div>
