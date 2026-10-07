@@ -21,6 +21,11 @@ export const agoraUsageService = {
         const res = await api.post('/admin/agora-accounts', body)
         return res.data.data.accounts
     },
+    // Any of { label, email, app_id, free_minutes, app_certificate } — certificate only if changing it
+    async updateAccount(id, body) {
+        const res = await api.put(`/admin/agora-accounts/${encodeURIComponent(id)}`, body)
+        return res.data.data.accounts
+    },
     async activateAccount(id) {
         const res = await api.post(`/admin/agora-accounts/${encodeURIComponent(id)}/activate`)
         return res.data.data.accounts

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onActivated } from 'vue'
-import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
+import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
@@ -25,6 +25,7 @@ const viewing = ref('')            // account whose usage is shown ('' = the act
 const switching = ref('')
 const notice = ref('')
 const showAdd = ref(false)
+const editingId = ref('')          // '' = adding, otherwise the account being edited
 const saving = ref(false)
 const addError = ref('')
 const form = reactive({ label: '', email: '', app_id: '', app_certificate: '', free_minutes: 10000 })
@@ -82,7 +83,14 @@ const removeAcc = async (a) => {
 }
 
 const openAdd = () => {
+  editingId.value = ''
   Object.assign(form, { label: '', email: '', app_id: '', app_certificate: '', free_minutes: 10000 })
+  addError.value = ''
+  showAdd.value = true
+}
+const openEdit = (a) => {
+  editingId.value = a.id
+  Object.assign(form, { label: a.label, email: a.email || '', app_id: a.app_id || '', app_certificate: '', free_minutes: a.free_minutes })
   addError.value = ''
   showAdd.value = true
 }
@@ -90,10 +98,19 @@ const saveAccount = async () => {
   saving.value = true
   addError.value = ''
   try {
-    accounts.value = await agoraUsageService.addAccount({ ...form })
+    if (editingId.value) {
+      // The certificate is never sent back, so a blank box means "keep the stored one".
+      const body = { label: form.label, email: form.email, app_id: form.app_id, free_minutes: form.free_minutes }
+      if (form.app_certificate) body.app_certificate = form.app_certificate
+      accounts.value = await agoraUsageService.updateAccount(editingId.value, body)
+      notice.value = t('Account updated.')
+    } else {
+      accounts.value = await agoraUsageService.addAccount({ ...form })
+      notice.value = t('Account added. Press "Use this account" when you want new classes to switch to it.')
+    }
     showAdd.value = false
     form.app_certificate = ''
-    notice.value = t('Account added. Press "Use this account" when you want new classes to switch to it.')
+    if (viewing.value === editingId.value || !viewing.value) await load()
   } catch (e) {
     addError.value = errMsg(e, 'Could not add account.')
   } finally {
@@ -216,8 +233,14 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                       class="ml-auto px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
                       {{ switching === a.id ? t('Switching…') : t('Use this account') }}
                     </button>
-                    <button v-if="a.source === 'db' && !a.is_active" type="button" @click="removeAcc(a)" :aria-label="t('Remove')"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer"><Trash2 class="w-4 h-4" /></button>
+                    <button v-if="a.source === 'db'" type="button" @click="openEdit(a)"
+                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                      <Pencil class="w-3.5 h-3.5" /> {{ t('Edit') }}</button>
+                    <button v-if="a.source === 'db'" type="button" @click="removeAcc(a)" :disabled="a.is_active"
+                      :title="a.is_active ? t('Switch to another account before deleting this one') : ''"
+                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/50 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                      <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
+                    <span v-if="a.source === 'env'" class="text-[11px] text-slate-400">{{ t('Set in the server .env') }}</span>
                   </template>
                 </div>
               </div>
@@ -344,10 +367,10 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
         <div v-if="showAdd" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" @click.self="!saving && (showAdd = false)">
           <form class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-6 space-y-4" @submit.prevent="saveAccount">
             <div class="flex items-center justify-between">
-              <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ t('Add Agora account') }}</h3>
+              <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ editingId ? t('Edit Agora account') : t('Add Agora account') }}</h3>
               <button type="button" @click="showAdd = false" class="p-1 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Close"><X class="w-4 h-4" /></button>
             </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Copy the App ID and App Certificate from your project in the Agora console. The certificate is stored encrypted and is never shown again.') }}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ editingId ? t('Leave the App Certificate empty to keep the one already stored.') : t('Copy the App ID and App Certificate from your project in the Agora console. The certificate is stored encrypted and is never shown again.') }}</p>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Name') }}
               <input v-model="form.label" required maxlength="60" placeholder="Account 2"
                 class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
@@ -361,7 +384,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                 class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
             </label>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">App Certificate
-              <input v-model="form.app_certificate" type="password" required autocomplete="new-password" spellcheck="false" maxlength="32"
+              <input v-model="form.app_certificate" type="password" :required="!editingId" :placeholder="editingId ? '••••••••••••••••' : ''" autocomplete="new-password" spellcheck="false" maxlength="32"
                 class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
             </label>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Free minutes per month') }}
@@ -375,7 +398,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
               <button type="button" @click="showAdd = false" :disabled="saving"
                 class="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">{{ t('Cancel') }}</button>
               <button type="submit" :disabled="saving"
-                class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">{{ saving ? t('Saving…') : t('Add account') }}</button>
+                class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">{{ saving ? t('Saving…') : editingId ? t('Save changes') : t('Add account') }}</button>
             </div>
           </form>
         </div>
