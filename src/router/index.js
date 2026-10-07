@@ -68,6 +68,12 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/agora-usage',
+        name: 'AgoraUsage',
+        component: () => import('@/views/admin/AgoraUsageView.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+    },
+    {
         path: '/roles',
         name: 'RoleManagement',
         component: () => import('@/views/admin/RoleManagementView.vue'),

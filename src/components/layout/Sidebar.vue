@@ -99,7 +99,7 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Clapperboard,
-  CalendarDays, Folder, Settings, ChevronDown, Library,
+  CalendarDays, Folder, Settings, ChevronDown, Library, Activity,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useLanguage } from '../../composables/useLanguage'
@@ -158,6 +158,7 @@ const topItems = computed(() => [
   { to: '/', label: 'My Classes', icon: Users, show: true, active: isMyClassesActive.value },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays, show: permissions.value.schedule, active: route.path === '/schedule' },
   { to: '/students', label: 'Student Management', icon: GraduationCap, show: isAdmin.value, active: route.path === '/students' },
+  { to: '/agora-usage', label: 'Agora Usage', icon: Activity, show: isAdmin.value, active: route.path === '/agora-usage' },
   { to: '/library', label: 'Library', icon: Library, show: true, active: route.path === '/library' },
 ].filter(i => i.show))
 
