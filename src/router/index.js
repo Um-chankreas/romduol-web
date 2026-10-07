@@ -54,6 +54,13 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin', 'super_admin'] } // Admin-only
     },
     {
+        // In-app reader: the raw file link is never opened in a browser tab.
+        path: '/library/read/:kind/:id',
+        name: 'LibraryReader',
+        component: () => import('@/views/library/PdfViewerView.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/library',
         name: 'Library',
         component: () => import('@/views/admin/LibraryView.vue'),

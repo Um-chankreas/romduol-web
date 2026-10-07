@@ -47,6 +47,8 @@ export default {
   "SSO Secured Connection": "ការតភ្ជាប់ SSO មានសុវត្ថិភាព",
   "Something went wrong. Please try again.": "មានបញ្ហាកើតឡើង។ សូមព្យាយាមម្តងទៀត។",
   "Cannot reach the server. Check your connection.": "មិនអាចភ្ជាប់ទៅម៉ាស៊ីនមេបានទេ។ សូមពិនិត្យការតភ្ជាប់របស់អ្នក។",
+  "Back": "ត្រឡប់ក្រោយ",
+  "Opening book…": "កំពុងបើកសៀវភៅ…",
   "Programs": "កម្មវិធីសិក្សា",
   "Olympiad Mathematics": "គណិតវិទ្យាអូឡាំពិក",
   "Olympiad Physics": "រូបវិទ្យាអូឡាំពិក",

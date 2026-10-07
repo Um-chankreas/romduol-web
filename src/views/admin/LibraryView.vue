@@ -569,8 +569,8 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
 
                     <!-- Hover actions -->
                     <div class="absolute inset-0 bg-slate-900/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition flex items-center justify-center gap-2">
-                      <a :href="b.file_url" target="_blank" rel="noopener" title="Open"
-                        class="w-8 h-8 rounded-full bg-white text-[#006A3A] flex items-center justify-center hover:scale-110 transition"><ExternalLink class="w-4 h-4" /></a>
+                      <router-link :to="{ name: 'LibraryReader', params: { kind, id: b.id } }" title="Read"
+                        class="w-8 h-8 rounded-full bg-white text-[#006A3A] flex items-center justify-center hover:scale-110 transition"><ExternalLink class="w-4 h-4" /></router-link>
                       <button v-if="canManage" type="button" title="Edit" @click="startEdit(b)"
                         class="w-8 h-8 rounded-full bg-[#ffce04] text-[#3d3000] flex items-center justify-center hover:scale-110 transition cursor-pointer"><Pencil class="w-4 h-4" /></button>
                       <button v-if="canManage" type="button" title="Delete" @click="removeItem(b)"
