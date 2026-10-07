@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
+import Footer from '@/components/layout/Footer.vue'
 import MarkdownContent from '@/components/ui/MarkdownContent.vue'
 import UnitEditForm from '@/components/units/UnitEditForm.vue'
 import UnitPractice from '@/components/units/UnitPractice.vue'
@@ -220,7 +221,8 @@ onMounted(load)
         </template>
       </Header>
 
-      <main class="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8">
+      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col">
+      <main class="flex-1 p-6 sm:p-8">
         <div class="w-full max-w-6xl mx-auto flex flex-col gap-6">
           <div v-if="loading" class="text-center py-20 text-slate-500 dark:text-slate-400 font-medium">
             Loading chapter…
@@ -372,6 +374,8 @@ onMounted(load)
           </template>
         </div>
       </main>
+      <Footer />
+      </div>
     </div>
 
     <ConfirmModal

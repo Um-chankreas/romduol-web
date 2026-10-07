@@ -9,7 +9,8 @@
         </template>
       </Header>
 
-      <main class="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-10 text-slate-900 dark:text-slate-100">
+      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col">
+      <main class="flex-1 p-6 sm:p-10 text-slate-900 dark:text-slate-100">
     <div class="max-w-4xl mx-auto space-y-6 text-left">
 
       <!-- Feedback Messages -->
@@ -269,6 +270,8 @@
       </template>
     </div>
       </main>
+      <Footer />
+      </div>
     </div>
   </div>
 </template>
@@ -280,6 +283,7 @@ import { assignmentService } from '@/services/assignmentService'
 import MathInput from '@/components/ui/MathInput.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
+import Footer from '@/components/layout/Footer.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 
 const route = useRoute()

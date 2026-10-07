@@ -1,4 +1,5 @@
 <script setup>
+import Footer from '../../components/layout/Footer.vue'
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { authService } from '../../services/authService'; // Path to your authService
@@ -38,7 +39,8 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-[#F1FCF0] dark:bg-slate-950 transition-colors duration-200">
+  <div class="min-h-screen w-full flex flex-col bg-[#F1FCF0] dark:bg-slate-950 transition-colors duration-200">
+    <div class="flex-1 w-full flex flex-col items-center justify-center p-6">
     <!-- Theme Switcher -->
     <button 
       @click="toggleTheme" 
@@ -114,5 +116,7 @@ const handleSubmit = async () => {
         <span>🛡️</span> SSO Secured Connection
       </div>
     </div>
+    </div>
+    <Footer />
   </div>
 </template>

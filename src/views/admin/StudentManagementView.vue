@@ -8,6 +8,7 @@ import { teacherService } from '../../services/teacherService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
+import Footer from '../../components/layout/Footer.vue';
 import ConfirmModal from '../../components/modals/ConfirmModal.vue';
 import StudentFormModal from '../../components/modals/StudentFormModal.vue';
 import TeacherFormModal from '../../components/modals/TeacherFormModal.vue';
@@ -346,12 +347,14 @@ const restore = async (s) => {
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header />
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-6 sm:p-8 flex-1 w-full space-y-5">
         <!-- Header row -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -776,6 +779,9 @@ const restore = async (s) => {
           </div>
         </template>
       </main>
+
+      <Footer />
+      </div>
     </div>
 
     <!-- Add / Edit -->

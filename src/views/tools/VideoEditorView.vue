@@ -1,8 +1,11 @@
 <script setup>
+import { useLanguage } from '@/composables/useLanguage'
+const { t } = useLanguage()
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Clapperboard, Minimize2, Scissors, Check, Upload, Crosshair, X, Plus, ArrowRight, ArrowUp, ArrowDown, Combine, Film } from 'lucide-vue-next'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import Header from '../../components/layout/Header.vue'
+import Footer from '../../components/layout/Footer.vue'
 import SaveFileActions from '../../components/tools/SaveFileActions.vue'
 import { videoToolsService } from '@/services/videoToolsService'
 import { permissionsService } from '@/services/permissionsService'
@@ -361,16 +364,18 @@ const inputCls = 'w-24 px-2.5 py-1.5 border border-slate-300 dark:border-slate-7
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header>
         <template #left>
-          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">Video Editor</h1>
+          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">{{ t('Video Editor') }}</h1>
         </template>
       </Header>
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-4 sm:p-8 flex-1 w-full max-w-4xl space-y-6">
         <p class="text-sm text-slate-600 dark:text-slate-400">
           Upload a video, shrink it, then cut it into clips — all in one place.
@@ -757,6 +762,9 @@ const inputCls = 'w-24 px-2.5 py-1.5 border border-slate-300 dark:border-slate-7
 
         <p v-if="error" class="text-sm text-red-600 dark:text-red-400" role="alert">{{ error }}</p>
       </main>
+
+      <Footer />
+      </div>
     </div>
   </div>
 </template>

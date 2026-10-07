@@ -18,6 +18,13 @@ export const libraryService = {
         return res.data.data.past_papers
     },
 
+    // Revision formula sheets (read-only here — the app's "Formulas" tab).
+    // file_url is a presigned link that lapses, so it is fetched fresh on load.
+    async listFormulas() {
+        const res = await api.get('/formulas')
+        return res.data.data.formulas
+    },
+
     // fields: { kind, order, ...textbook/past-paper naming fields, overwrite? }
     async upload(file, fields, onUploadProgress, coverBlob) {
         const form = new FormData()

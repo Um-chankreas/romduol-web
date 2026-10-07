@@ -1,8 +1,12 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, Pencil, Trash2, Search, BookOpen, ScrollText, ExternalLink, X, Plus, Library, Layers, HardDrive, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { useLanguage } from '@/composables/useLanguage'
+const { t } = useLanguage()
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { UploadCloud, FileText, CheckCircle2, AlertCircle, Pencil, Trash2, Search, BookOpen, ScrollText, ExternalLink, X, Plus, Library, Layers, HardDrive, ChevronDown, Calculator } from 'lucide-vue-next'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import Header from '../../components/layout/Header.vue'
+import Footer from '../../components/layout/Footer.vue'
+import Skeleton from '../../components/ui/Skeleton.vue'
 import CoverCropper from '../../components/ui/CoverCropper.vue'
 import { libraryService } from '@/services/libraryService'
 
@@ -13,6 +17,10 @@ const kind = ref('textbook')
 const form = reactive({
   order: 1, grade: 1, subject: 'khmer', variant: '', language: '',
   topic: '', paper_kind: 'paper',
+  // formula sheets
+  grade_from: 12, grade_to: '', qualifier: '', source: '', version: 1,
+  // optional hand-written title (empty = the automatic one)
+  title: '', subtitle: '',
 })
 const file = ref(null)
 const fileInputRef = ref(null)
@@ -25,95 +33,79 @@ const needsOverwrite = ref(false)
 
 const textbooks = ref([])
 const pastPapers = ref([])
+const formulas = ref([])
 const listError = ref('')
+// True only until the first load finishes, so skeletons show on arrival but a
+// refresh after an upload or delete doesn't flash the page back to grey.
+const initialLoading = ref(true)
 
-const items = computed(() => (kind.value === 'textbook' ? textbooks.value : pastPapers.value))
+const items = computed(() => (kind.value === 'textbook' ? textbooks.value : kind.value === 'formula' ? formulas.value : pastPapers.value))
+const addLabel = computed(() => (kind.value === 'textbook' ? 'textbook' : kind.value === 'formula' ? 'formula sheet' : 'past paper'))
+const unitLabel = computed(() => (kind.value === 'textbook' ? 'books' : kind.value === 'formula' ? 'sheets' : 'papers'))
 
 // Shelf filters (client-side: the whole shelf is one request).
 const search = ref('')
-// Textbooks open as folders (one per grade, or per subject); clicking one
-// shows just its books. `openGroup` is the folder's key, null at the top level.
-const groupBy = ref('grade')
-const openGroup = ref(null)
+// "Grade 12" or "Grades 10–12" for a formula sheet.
+const gradeRange = (f) => (f.grade_from == null ? '' : f.grade_from === f.grade_to ? `Grade ${f.grade_from}` : `Grades ${f.grade_from}–${f.grade_to}`)
 
-const subjectChoices = computed(() => {
+const searching = computed(() => !!search.value.trim())
+
+// ---- Grade / Subject filters (textbooks + formulas; past papers have neither) ----
+const filterGrades = ref([])       // [] = all grades; several can be picked at once
+const filterSubject = ref('')      // '' = all subjects
+const openMenu = ref('')           // '' | 'grade' | 'subject'
+const hasFilters = computed(() => filterGrades.value.length > 0 || !!filterSubject.value)
+const canFilter = computed(() => kind.value !== 'past-paper')
+const GRADE_LEVELS = [
+  { title: 'Primary school', grades: [1, 2, 3, 4, 5, 6] },
+  { title: 'Lower secondary', grades: [7, 8, 9] },
+  { title: 'Upper secondary', grades: [10, 11, 12] },
+]
+const subjectOptions = computed(() => {
   const seen = new Map()
-  textbooks.value.forEach(b => b.subject_slug && seen.set(b.subject_slug, b.subject_en))
-  return [...seen].map(([slug, en]) => ({ slug, en }))
+  items.value.forEach(b => b.subject_slug && seen.set(b.subject_slug, b.subject_en || b.subject_slug))
+  return [...seen].map(([slug, en]) => ({ slug, en })).sort((a, b) => a.en.localeCompare(b.en))
 })
+const subjectLabel = computed(() => subjectOptions.value.find(s => s.slug === filterSubject.value)?.en || 'All')
+const matchesGrade = (b, g) => (kind.value === 'formula'
+  ? b.grade_from != null && g >= b.grade_from && g <= b.grade_to
+  : b.grade === g)
+// Grades are multi-select: each click toggles one and the menu stays open.
+const toggleGrade = (g) => {
+  const set = new Set(filterGrades.value)
+  set.has(g) ? set.delete(g) : set.add(g)
+  filterGrades.value = [...set].sort((a, b) => a - b)
+}
+const gradeLabel = computed(() => {
+  const g = filterGrades.value
+  return !g.length ? 'All' : g.length <= 3 ? g.join(', ') : `${g.length} selected`
+})
+const pickSubject = (s) => { filterSubject.value = s; openMenu.value = '' }
+const toggleMenu = (m) => { openMenu.value = openMenu.value === m ? '' : m }
+const closeMenus = (e) => { if (!e.target.closest?.('.lib-filter')) openMenu.value = '' }
 
-const keyOf = (b) => (groupBy.value === 'grade' ? (b.grade ?? 'other') : (b.subject_slug ?? 'other'))
-
+// Grade and Subject narrow the shelf first; search then looks inside what's left
+// (clear the filters and it looks across every book of the tab).
 const filteredItems = computed(() => {
   const q = search.value.trim().toLowerCase()
+  const words = q ? q.split(/\s+/) : []
+  const useFilters = canFilter.value
   return items.value.filter(b => {
-    if (kind.value === 'textbook' && openGroup.value !== null && keyOf(b) !== openGroup.value) return false
-    if (!q) return true
-    return `${b.title} ${b.subtitle || ''} ${b.id}`.toLowerCase().includes(q)
+    if (useFilters && filterGrades.value.length && !filterGrades.value.some(g => matchesGrade(b, g))) return false
+    if (useFilters && filterSubject.value && b.subject_slug !== filterSubject.value) return false
+    if (!words.length) return true
+    const hay = `${b.title} ${b.subtitle || ''} ${b.id} ${b.subject_en || ''} ${b.grade ? 'grade ' + b.grade : ''} ${b.grade_from != null ? 'grade ' + b.grade_from + ' grade ' + b.grade_to : ''}`.toLowerCase()
+    return words.every(w => hay.includes(w))
   })
 })
-
-// The folders shown before you open one: books grouped by grade or subject.
-const folders = computed(() => {
-  const map = new Map()
-  textbooks.value.forEach(b => {
-    const key = keyOf(b)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key).push(b)
-  })
-  const byGrade = groupBy.value === 'grade'
-  return [...map.entries()].map(([key, books]) => {
-    const grades = [...new Set(books.map(b => b.grade).filter(Boolean))].sort((a, b) => a - b)
-    return {
-      key,
-      label: key === 'other' ? 'Other' : byGrade ? `Grade ${key}` : (books[0].subject_en || key),
-      detail: byGrade
-        ? `${new Set(books.map(b => b.subject_en)).size} subjects`
-        : grades.length ? `Grades ${grades[0]}${grades.length > 1 ? '–' + grades[grades.length - 1] : ''}` : '',
-      count: books.length,
-      chips: byGrade ? [...new Set(books.map(b => b.subject_en).filter(Boolean))] : [],
-      bytes: books.reduce((n, b) => n + (b.file_size || 0), 0),
-    }
-  }).sort((x, y) => (x.key === 'other') - (y.key === 'other')
-    || (byGrade ? x.key - y.key : x.label.localeCompare(y.label)))
-})
-// Cambodian school levels, so twelve grade folders read as three clear steps.
-const LEVELS = [
-  { title: 'Primary school', from: 1, to: 6 },
-  { title: 'Lower secondary', from: 7, to: 9 },
-  { title: 'Upper secondary', from: 10, to: 12 },
-]
-const folderSections = computed(() => {
-  if (groupBy.value !== 'grade') return [{ title: '', sub: '', folders: folders.value }]
-  const out = LEVELS.map(l => {
-    const list = folders.value.filter(f => f.key !== 'other' && f.key >= l.from && f.key <= l.to)
-    return { title: l.title, sub: `Grades ${l.from}–${l.to}`, folders: list }
-  }).filter(sec => sec.folders.length)
-  const other = folders.value.filter(f => f.key === 'other')
-  if (other.length) out.push({ title: 'Other', sub: '', folders: other })
-  return out
-})
-const maxFolderCount = computed(() => Math.max(1, ...folders.value.map(f => f.count)))
-// 'all' skips the folders and shows every textbook at once.
-const showFolders = computed(() => kind.value === 'textbook' && groupBy.value !== 'all' && openGroup.value === null && !search.value.trim())
-const openFolderLabel = computed(() => folders.value.find(f => f.key === openGroup.value)?.label || '')
 
 // ---- shelf: one continuous run of covers, grade then order ----
-const shelfItems = computed(() => [...filteredItems.value].sort((x, y) =>
-  (x.grade ?? 99) - (y.grade ?? 99) || x.order_number - y.order_number || x.id.localeCompare(y.id)))
+const shelfItems = computed(() => [...filteredItems.value].sort((x, y) => kind.value === 'formula'
+  ? (x.subject_en || '~').localeCompare(y.subject_en || '~') || (x.grade_from ?? 99) - (y.grade_from ?? 99) || x.id.localeCompare(y.id)
+  : (x.grade ?? 99) - (y.grade ?? 99) || x.order_number - y.order_number || x.id.localeCompare(y.id)))
 
-// In "All" the shelf is split under a heading per grade, so a hundred covers
-// stay scannable. Everywhere else it's one untitled run.
-const shelfSections = computed(() => {
-  if (kind.value !== 'textbook' || groupBy.value !== 'all') return [{ key: 'all', title: '', books: shelfItems.value }]
-  const out = []
-  shelfItems.value.forEach(b => {
-    const key = b.grade ?? 'other'
-    if (out.at(-1)?.key !== key) out.push({ key, title: key === 'other' ? 'Other' : `Grade ${key}`, books: [] })
-    out.at(-1).books.push(b)
-  })
-  return out
-})
+// The shelf is one continuous, untitled run: no grouping by grade or subject.
+const shelfSections = computed(() => [{ key: 'all', title: '', books: shelfItems.value }])
 
 // Covers are plain paper on purpose: green stays an accent (spine, grade label)
 // so a shelf of 100 books reads as a library, not a wall of colour.
@@ -124,10 +116,10 @@ const toggleRow = (id) => {
   next.has(id) ? next.delete(id) : next.add(id)
   selected.value = next
 }
-watch(groupBy, () => { openGroup.value = null })
 // Only what's on screen can stay selected — otherwise "Delete N selected"
 // would also delete books ticked in a folder or search you've since left.
-watch([kind, openGroup, search], () => { selected.value = new Set() })
+onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
+watch([kind, search, filterGrades, filterSubject], () => { selected.value = new Set() })
 
 const removeSelected = async () => {
   const ids = [...selected.value]
@@ -146,12 +138,11 @@ const removeSelected = async () => {
 
 const totalBytes = computed(() => items.value.reduce((n, b) => n + (b.file_size || 0), 0))
 const gradesCovered = computed(() => new Set(textbooks.value.map(b => b.grade).filter(Boolean)).size)
-const subjectsCovered = computed(() => subjectChoices.value.length)
 
-const clearFilters = () => { search.value = ''; openGroup.value = null }
+const clearFilters = () => { search.value = ''; filterGrades.value = []; filterSubject.value = ''; openMenu.value = '' }
 
 const kindLabel = { questions: 'Key questions', answers: 'Answers', paper: 'Paper' }
-const size = (bytes) => (bytes == null ? '—' : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`)
+const size = (bytes) => (bytes == null ? '—' : bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`)
 
 const refresh = async () => {
   listError.value = ''
@@ -162,9 +153,13 @@ const refresh = async () => {
   } catch {
     listError.value = 'Could not load the current shelf.'
   }
+  // Separate so a formula-shelf problem never hides the books and papers.
+  try { formulas.value = await libraryService.listFormulas() } catch { formulas.value = [] }
+  initialLoading.value = false
 }
 
 onMounted(async () => {
+  document.addEventListener('click', closeMenus)
   try {
     options.value = await libraryService.getOptions()
   } catch {
@@ -226,7 +221,17 @@ const startEdit = (b) => {
   editing.value = b
   showForm.value = true
   form.order = b.order_number
-  if (kind.value === 'textbook') {
+  form.title = b.title_custom ? b.title : ''
+  form.subtitle = b.title_custom ? (b.subtitle || '') : ''
+  if (kind.value === 'formula') {
+    form.subject = b.subject_slug || 'math'
+    form.grade_from = b.grade_from || 12
+    form.grade_to = b.grade_to && b.grade_to !== b.grade_from ? b.grade_to : ''
+    form.qualifier = b.qualifier_slug || ''
+    form.source = b.source_slug || ''
+    form.language = b.language || ''
+    form.version = b.version || 1
+  } else if (kind.value === 'textbook') {
     form.grade = b.grade || 1
     form.subject = b.subject_slug || 'khmer'
     form.variant = b.variant_slug || ''
@@ -237,7 +242,7 @@ const startEdit = (b) => {
   }
 }
 const cancelEdit = () => { editing.value = null; error.value = '' }
-const openAdd = () => { resetCover(); editing.value = null; file.value = null; error.value = ''; success.value = ''; needsOverwrite.value = false; showForm.value = true }
+const openAdd = () => { form.title = ''; form.subtitle = ''; resetCover(); editing.value = null; file.value = null; error.value = ''; success.value = ''; needsOverwrite.value = false; showForm.value = true }
 const closeForm = () => { resetCover(); showForm.value = false; editing.value = null; error.value = '' }
 
 const removeItem = async (b) => {
@@ -276,7 +281,7 @@ const onChoose = (e) => { pickFile(e.target.files?.[0]); e.target.value = '' }
 const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1)
 
 const canSubmit = computed(() => (!!file.value || !!editing.value) && !busy.value
-  && (kind.value === 'textbook' || /^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.topic.trim().toLowerCase())))
+  && (kind.value !== 'past-paper' || /^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.topic.trim().toLowerCase())))
 
 const submit = async (overwrite = false) => {
   if (!canSubmit.value) return
@@ -285,14 +290,21 @@ const submit = async (overwrite = false) => {
   error.value = ''
   success.value = ''
   try {
-    const fields = kind.value === 'textbook'
+    const fields = kind.value === 'formula'
+      ? { kind: 'formula', subject: form.subject, grade_from: form.grade_from, grade_to: form.grade_to,
+          qualifier: form.qualifier, source: form.source, language: form.language, version: form.version }
+      : kind.value === 'textbook'
       ? { kind: 'textbook', order: form.order, grade: form.grade, subject: form.subject,
           variant: form.variant, language: form.language }
       : { kind: 'past-paper', order: form.order, topic: form.topic.trim().toLowerCase(),
           paper_kind: form.paper_kind }
+    // Editing always sends the title so clearing it restores the automatic one;
+    // a new upload only sends one that was typed.
+    if (editing.value || form.title.trim()) { fields.title = form.title.trim(); fields.subtitle = form.subtitle.trim() }
     if (overwrite) fields.overwrite = 'true'
 
     if (editing.value) {
+      const editingWas = editing.value
       const result = await libraryService.update(kind.value, editing.value.id, fields)
       // The cover follows its PDF's name, so apply any cover change to the new one.
       const stem = result.name.replace(/\.pdf$/, '')
@@ -301,7 +313,9 @@ const submit = async (overwrite = false) => {
       editing.value = { ...editing.value, id: stem }
       if (coverBlob.value) await libraryService.setCover(kind.value, stem, coverBlob.value)
       else if (removeExistingCover.value) await libraryService.removeCover(kind.value, stem)
-      success.value = result.unchanged && !coverBlob.value && !removeExistingCover.value ? 'Nothing changed.' : `Saved. Now ${result.name}.`
+      const titleChanged = form.title.trim() !== (editingWas.title_custom ? editingWas.title : '')
+        || form.subtitle.trim() !== (editingWas.title_custom ? (editingWas.subtitle || '') : '')
+      success.value = result.unchanged && !coverBlob.value && !removeExistingCover.value && !titleChanged ? 'Nothing changed.' : `Saved. Now ${result.name}.`
       resetCover()
       editing.value = null
       showForm.value = false
@@ -317,7 +331,7 @@ const submit = async (overwrite = false) => {
     file.value = null
     needsOverwrite.value = false
     showForm.value = false
-    form.order = Math.min(99, Number(form.order) + 1)
+    if (kind.value !== 'formula') form.order = Math.min(99, Number(form.order) + 1)
     refresh()
   } catch (e) {
     error.value = e.response?.data?.error || e.message || 'Upload failed.'
@@ -340,6 +354,16 @@ const tone = () => ({
 // What the file will be called — mirrors lms-backend library.routes.js buildName.
 const pad2 = (n) => String(Math.max(0, Number(n) || 0)).padStart(2, '0')
 const previewName = computed(() => {
+  if (kind.value === 'formula') {
+    const parts = [editing.value?.id?.match(/^\d{6,}/)?.[0] || '########', form.subject, 'formulas']
+    if (form.qualifier) parts.push(form.qualifier)
+    parts.push(`g${pad2(form.grade_from)}`)
+    if (form.grade_to !== '' && Number(form.grade_to) !== Number(form.grade_from)) parts.push(`g${pad2(form.grade_to)}`)
+    if (form.source) parts.push(form.source)
+    if (form.language) parts.push(form.language)
+    if (Number(form.version) > 1) parts.push(`v${form.version}`)
+    return `${parts.join('-')}.pdf`
+  }
   if (kind.value === 'textbook') {
     const parts = [pad2(form.order), `grade${pad2(form.grade)}`, form.subject]
     if (form.variant) parts.push(form.variant)
@@ -356,47 +380,50 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header>
         <template #left>
-          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">Library Management</h1>
+          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">{{ t('Library Management') }}</h1>
         </template>
       </Header>
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-4 sm:p-8 flex-1 w-full space-y-6">
 
-        <!-- Hero -->
-        <section class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#005530] via-[#006A3A] to-[#12985a] px-5 py-4 text-white shadow-md">
-          <div class="absolute -right-10 -top-16 w-60 h-60 rounded-full bg-[#ffce04]/20 blur-3xl" />
-          <div class="relative flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div class="min-w-0">
-              <h2 class="text-xl font-extrabold leading-tight">Book catalog</h2>
-              <p class="text-xs text-white/70">Add a PDF and it's on students' phones instantly.</p>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2 lg:ml-auto">
-              <span v-for="c in [
-                { label: 'textbooks', value: textbooks.length, icon: BookOpen },
-                { label: 'past papers', value: pastPapers.length, icon: ScrollText },
-                { label: 'grades', value: gradesCovered, icon: Layers },
-                { label: 'used', value: size(textbooks.reduce((n, b) => n + (b.file_size || 0), 0) + pastPapers.reduce((n, b) => n + (b.file_size || 0), 0)), icon: HardDrive },
-              ]" :key="c.label"
-                class="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/15 pl-2.5 pr-3.5 py-1.5 text-sm">
-                <component :is="c.icon" class="w-4 h-4 text-[#ffce04]" />
-                <b class="font-extrabold">{{ c.value }}</b>
-                <span class="text-white/70 text-xs">{{ c.label }}</span>
-              </span>
-            </div>
-
-            <button type="button" @click="openAdd" :disabled="options && !options.configured"
-              class="inline-flex items-center gap-2 bg-[#ffce04] hover:bg-[#ffd92e] disabled:opacity-40 text-[#3d3000] text-sm font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-black/10 transition hover:-translate-y-0.5 cursor-pointer">
-              <Plus class="w-4 h-4" /> Add {{ kind === 'textbook' ? 'textbook' : 'past paper' }}
-            </button>
+        <!-- Title + action -->
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h2 class="text-2xl font-extrabold leading-tight text-slate-900 dark:text-white">Book catalog</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Add a PDF and it's on students' phones instantly.</p>
           </div>
-        </section>
+          <button type="button" @click="openAdd" :disabled="options && !options.configured"
+            class="inline-flex items-center gap-2 bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-40 text-white text-sm font-bold py-2.5 px-5 rounded-xl shadow-sm transition cursor-pointer">
+            <Plus class="w-4 h-4" /> Add {{ addLabel }}
+          </button>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div v-for="c in [
+            { label: 'Textbooks', value: textbooks.length, icon: BookOpen },
+            { label: 'Past papers', value: pastPapers.length, icon: ScrollText },
+            { label: 'Formulas', value: formulas.length, icon: Calculator },
+            { label: 'Grades', value: gradesCovered, icon: Layers },
+            { label: 'Storage used', value: size([textbooks, pastPapers, formulas].reduce((n, list) => n + list.reduce((m, b) => m + (b.file_size || 0), 0), 0)), icon: HardDrive },
+          ]" :key="c.label"
+            class="flex items-center justify-between rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-5 py-4">
+            <div>
+              <p class="text-xs text-slate-500 dark:text-slate-400">{{ c.label }}</p>
+              <Skeleton v-if="initialLoading" class="h-6 w-14 mt-1.5" />
+              <p v-else class="text-2xl font-extrabold text-slate-900 dark:text-white mt-1 leading-none">{{ c.value }}</p>
+            </div>
+            <component :is="c.icon" class="w-4 h-4 text-slate-400" />
+          </div>
+        </div>
 
         <div v-if="options && !options.configured"
           class="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
@@ -414,24 +441,60 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
         <!-- Catalog panel -->
         <section>
           <!-- Tabs · search · filters on one row -->
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 dark:border-slate-800">
             <div class="flex items-center gap-1">
-              <button v-for="t in [{ k: 'textbook', l: 'Textbooks', n: textbooks.length }, { k: 'past-paper', l: 'Past papers', n: pastPapers.length }]"
+              <button v-for="t in [{ k: 'textbook', l: 'Textbooks', n: textbooks.length }, { k: 'past-paper', l: 'Past papers', n: pastPapers.length }, { k: 'formula', l: 'Formulas', n: formulas.length }]"
                 :key="t.k" type="button" @click="kind = t.k"
                 :class="['px-3 py-3 text-sm font-bold border-b-2 -mb-px transition cursor-pointer',
                   kind === t.k ? 'border-[#006A3A] text-[#006A3A] dark:text-emerald-400 dark:border-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200']">
                 {{ t.l }}
-                <span :class="['ml-1.5 px-1.5 py-0.5 rounded-full text-[11px]', kind === t.k ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500']">{{ t.n }}</span>
+                <span :class="['ml-1.5 px-1.5 py-0.5 rounded-full text-[11px]', kind === t.k ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500']"><template v-if="!initialLoading">{{ t.n }}</template><template v-else>&nbsp;&nbsp;</template></span>
               </button>
             </div>
 
-            <!-- Browse textbooks all at once, or as folders by grade or by subject -->
-            <div v-if="kind === 'textbook'" class="flex items-center gap-2 pl-4 ml-1 border-l border-slate-200 dark:border-slate-700 py-2">
-              <span class="text-xs font-bold text-slate-500 dark:text-slate-400">Browse by</span>
-              <div class="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5">
-                <button v-for="g in [{ k: 'all', l: 'All' }, { k: 'grade', l: 'Grade' }, { k: 'subject', l: 'Subject' }]" :key="g.k" type="button" @click="groupBy = g.k"
-                  :class="['px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer',
-                    groupBy === g.k ? 'bg-white dark:bg-slate-900 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-500']">{{ g.l }}</button>
+            <!-- Grade + Subject filters -->
+            <div v-if="canFilter" class="flex items-center gap-2 py-2">
+              <div class="lib-filter relative">
+                <button type="button" @click="toggleMenu('grade')"
+                  :class="['inline-flex items-center gap-2 rounded-xl border bg-white dark:bg-slate-900 px-3 py-2 text-xs transition cursor-pointer',
+                    openMenu === 'grade' || filterGrades.length ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300']">
+                  <span class="text-slate-500 dark:text-slate-400">Grade</span>
+                  <b class="text-slate-900 dark:text-white">{{ gradeLabel }}</b>
+                  <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+                </button>
+                <div v-if="openMenu === 'grade'" class="absolute left-0 top-full mt-2 z-40 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-4">
+                  <button type="button" @click="filterGrades = []"
+                    :class="['w-full text-left rounded-lg px-3 py-2 text-sm font-bold cursor-pointer', !filterGrades.length ? 'bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800']">All grades</button>
+                  <div v-for="lv in GRADE_LEVELS" :key="lv.title" class="mt-3">
+                    <p class="text-[11px] font-bold text-slate-400 mb-1.5">{{ lv.title }}</p>
+                    <div class="flex flex-wrap gap-1.5">
+                      <button v-for="g in lv.grades" :key="g" type="button" @click="toggleGrade(g)" :aria-pressed="filterGrades.includes(g)"
+                        :class="['w-9 h-8 rounded-lg border text-xs font-semibold cursor-pointer transition', filterGrades.includes(g) ? 'bg-[#006A3A] border-[#006A3A] text-white' : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#006A3A]']">{{ g }}</button>
+                    </div>
+                  </div>
+                  <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <button type="button" @click="filterGrades = []" :disabled="!filterGrades.length"
+                      class="text-xs font-bold text-slate-500 hover:text-red-600 disabled:opacity-40 disabled:hover:text-slate-500 disabled:cursor-not-allowed cursor-pointer">Clear</button>
+                    <button type="button" @click="openMenu = ''"
+                      class="px-4 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold cursor-pointer">Done</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="lib-filter relative">
+                <button type="button" @click="toggleMenu('subject')"
+                  :class="['inline-flex items-center gap-2 rounded-xl border bg-white dark:bg-slate-900 px-3 py-2 text-xs transition cursor-pointer',
+                    openMenu === 'subject' || filterSubject ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300']">
+                  <span class="text-slate-500 dark:text-slate-400">Subject</span>
+                  <b class="text-slate-900 dark:text-white">{{ subjectLabel }}</b>
+                  <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+                </button>
+                <div v-if="openMenu === 'subject'" class="absolute left-0 top-full mt-2 z-40 w-60 max-h-80 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-3">
+                  <button type="button" @click="pickSubject('')"
+                    :class="['w-full text-left rounded-lg px-3 py-2 text-sm font-bold cursor-pointer', !filterSubject ? 'bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800']">All subjects</button>
+                  <button v-for="s in subjectOptions" :key="s.slug" type="button" @click="pickSubject(s.slug)"
+                    :class="['w-full text-left rounded-lg px-3 py-2 text-sm font-medium cursor-pointer mt-0.5', filterSubject === s.slug ? 'bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400 font-bold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800']">{{ s.en }}</button>
+                </div>
               </div>
             </div>
 
@@ -440,82 +503,42 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                 class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 cursor-pointer">
                 <Trash2 class="w-3.5 h-3.5" /> Delete {{ selected.size }} selected
               </button>
-              <button v-if="search || openGroup !== null" type="button" @click="clearFilters"
+              <button v-if="search || hasFilters" type="button" @click="clearFilters"
                 class="text-xs font-bold text-[#006A3A] dark:text-emerald-400 underline cursor-pointer">Clear</button>
               <div class="relative w-56">
                 <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input v-model="search" type="search" placeholder="Search" :class="[inputCls, 'pl-9 !py-2']" />
+                <input v-model="search" type="search" placeholder="Search all books" :class="[inputCls, 'pl-9 !py-2']" />
               </div>
-              <span v-if="!showFolders" class="text-xs font-semibold text-slate-400 whitespace-nowrap">{{ filteredItems.length }}<template v-if="filteredItems.length !== items.length"> of {{ items.length }}</template> {{ kind === 'textbook' ? 'books' : 'papers' }}</span>
+              <span class="text-xs font-semibold text-slate-400 whitespace-nowrap">{{ filteredItems.length }}<template v-if="filteredItems.length !== items.length"> of {{ items.length }}</template> {{ unitLabel }}</span>
             </div>
           </div>
 
           <p v-if="listError" class="px-4 py-2 text-sm text-red-600">{{ listError }}</p>
 
           <!-- Bookshelf -->
-          <div class="p-4 sm:p-6">
-            <!-- Inside a folder: way back -->
-            <div v-if="kind === 'textbook' && openGroup !== null" class="flex items-center gap-2 mb-5 text-sm">
-              <button type="button" @click="openGroup = null"
-                class="inline-flex items-center gap-1 font-bold text-[#006A3A] dark:text-emerald-400 hover:underline cursor-pointer">
-                <ChevronLeft class="w-4 h-4" /> All {{ groupBy === 'grade' ? 'grades' : 'subjects' }}
-              </button>
-              <span class="text-slate-300">/</span>
-              <span class="font-extrabold text-slate-900 dark:text-white">{{ openFolderLabel }}</span>
+          <div class="pt-6">
+            <!-- Search results -->
+            <p v-if="searching && !hasFilters" class="mb-5 text-sm text-slate-500 dark:text-slate-400">
+              <b class="text-slate-900 dark:text-white">{{ filteredItems.length }}</b>
+              {{ filteredItems.length === 1 ? 'result' : 'results' }} for
+              “<b class="text-slate-900 dark:text-white">{{ search.trim() }}</b>” across all {{ items.length }} {{ unitLabel }}
+            </p>
+
+            <!-- Loading: a shelf of grey covers -->
+            <div v-if="initialLoading" class="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,10rem))] gap-x-5 gap-y-6" aria-busy="true" aria-label="Loading books">
+              <div v-for="n in 12" :key="n">
+                <Skeleton class="aspect-[3/4] w-full !rounded-r-xl !rounded-l-md" />
+                <Skeleton class="mt-2.5 h-3.5 w-11/12" />
+                <Skeleton class="mt-1.5 h-3 w-2/3" />
+              </div>
             </div>
 
-            <!-- Folders, grouped into school levels -->
-            <div v-if="showFolders" class="space-y-8">
-              <section v-for="sec in folderSections" :key="sec.title || 'all'">
-                <div v-if="sec.title" class="flex items-center gap-3 mb-3">
-                  <span class="w-1.5 h-6 rounded-full bg-[#ffce04]" />
-                  <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ sec.title }}</h3>
-                  <span class="text-xs font-semibold text-slate-400">{{ sec.sub }}<template v-if="sec.sub"> · </template>{{ sec.folders.reduce((n, f) => n + f.count, 0) }} books</span>
-                  <span class="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                </div>
-
-                <div class="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-4">
-                  <button v-for="f in sec.folders" :key="f.key" type="button" @click="openGroup = f.key"
-                    class="group text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 transition hover:-translate-y-0.5 hover:shadow-lg hover:border-[#006A3A] cursor-pointer">
-                    <div class="flex items-center gap-4">
-                      <span class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#005530] to-[#12985a] text-white shrink-0 flex flex-col items-center justify-center shadow-md shadow-emerald-900/15 relative overflow-hidden transition group-hover:scale-105">
-                        <span class="absolute top-0 inset-x-0 h-1 bg-[#ffce04]" />
-                        <template v-if="groupBy === 'grade' && f.key !== 'other'">
-                          <span class="text-[9px] font-bold uppercase tracking-widest text-white/70 leading-none">Grade</span>
-                          <span class="text-2xl font-extrabold leading-none mt-1">{{ f.key }}</span>
-                        </template>
-                        <BookOpen v-else class="w-7 h-7" />
-                      </span>
-
-                      <div class="min-w-0 flex-1">
-                        <p class="text-lg font-extrabold text-slate-900 dark:text-white truncate leading-tight">{{ f.label }}</p>
-                        <p class="text-sm font-bold text-[#006A3A] dark:text-emerald-400 whitespace-nowrap">{{ f.count }} {{ f.count === 1 ? 'book' : 'books' }}</p>
-                        <p class="text-xs text-slate-500 truncate">{{ f.detail }}<template v-if="f.detail"> · </template>{{ size(f.bytes) }}</p>
-                      </div>
-
-                      <ChevronRight class="w-5 h-5 text-slate-300 group-hover:text-[#006A3A] group-hover:translate-x-0.5 transition shrink-0" />
-                    </div>
-
-                    <!-- what's inside -->
-                    <div v-if="f.chips.length" class="mt-4 flex flex-wrap gap-1.5">
-                      <span v-for="c in f.chips.slice(0, 4)" :key="c" class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300">{{ c }}</span>
-                      <span v-if="f.chips.length > 4" class="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-[11px] font-bold text-[#006A3A] dark:text-emerald-400">+{{ f.chips.length - 4 }} more</span>
-                    </div>
-
-                    <div class="mt-4 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                      <div class="h-full rounded-full bg-[#006A3A]/70" :style="{ width: Math.max(6, (f.count / maxFolderCount) * 100) + '%' }" />
-                    </div>
-                  </button>
-                </div>
-              </section>
-            </div>
-
-            <div v-if="!showFolders" class="space-y-8">
+            <div v-else class="space-y-8">
               <section v-for="sec in shelfSections" :key="sec.key">
                 <div v-if="sec.title" class="flex items-center gap-3 mb-3">
                   <span class="w-1.5 h-6 rounded-full bg-[#ffce04]" />
                   <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ sec.title }}</h3>
-                  <span class="text-xs font-semibold text-slate-400">{{ sec.books.length }} {{ sec.books.length === 1 ? 'book' : 'books' }}</span>
+                  <span class="text-xs font-semibold text-slate-400">{{ sec.books.length }} {{ sec.books.length === 1 ? unitLabel.slice(0, -1) : unitLabel }}</span>
                   <span class="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
                 </div>
               <div class="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,10rem))] gap-x-5 gap-y-6">
@@ -530,7 +553,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
 
                     <div v-if="!b.cover_url" class="relative h-full flex flex-col justify-between pl-5 pr-2.5 pt-4 pb-2.5">
                       <p class="text-[9px] font-bold uppercase tracking-wider text-[#006A3A] dark:text-emerald-400">
-                        {{ kind === 'textbook' ? (b.grade ? 'Grade ' + b.grade : 'Textbook') : kindLabel[b.kind] }}
+                        {{ kind === 'textbook' ? (b.grade ? 'Grade ' + b.grade : 'Textbook') : kind === 'formula' ? (gradeRange(b) || 'Formula') : kindLabel[b.kind] }}
                       </p>
                       <p class="font-bold text-[13px] leading-snug line-clamp-4">{{ b.title }}</p>
                       <div class="flex items-end justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
@@ -556,14 +579,16 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                     </label>
                   </div>
 
-                  <p class="mt-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate" :title="b.id + '.pdf'">{{ b.subtitle || b.id }}</p>
-                  <p class="text-[11px] text-slate-400 truncate">{{ size(b.file_size) }} · #{{ b.order_number }}</p>
+                  <p class="mt-2.5 text-[13px] font-bold leading-snug text-slate-900 dark:text-white line-clamp-2" :title="b.title">{{ b.title }}</p>
+                  <p v-if="b.subtitle" class="text-xs text-slate-600 dark:text-slate-300 truncate" :title="b.subtitle">{{ b.subtitle }}</p>
+                  <p v-else class="text-xs text-slate-500 truncate" :title="b.id + '.pdf'">{{ b.id }}</p>
+                  <p class="text-[11px] text-slate-400 truncate">{{ size(b.file_size) }}<template v-if="kind !== 'formula'"> · #{{ b.order_number }}</template></p>
                 </article>
               </div>
               </section>
             </div>
 
-            <div v-if="showFolders ? !folders.length : !shelfItems.length" class="py-16 text-center">
+            <div v-if="!initialLoading && !shelfItems.length" class="py-16 text-center">
               <Library class="w-10 h-10 mx-auto text-slate-300 mb-2" />
               <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">{{ items.length ? 'No matches' : 'Nothing on this shelf yet' }}</p>
               <button v-if="!items.length" type="button" @click="openAdd" class="mt-2 text-sm font-bold text-[#006A3A] dark:text-emerald-400 underline cursor-pointer">Add the first one</button>
@@ -571,6 +596,9 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
           </div>
         </section>
       </main>
+
+      <Footer />
+      </div>
     </div>
 
     <!-- Add / edit drawer (slides in from the right) -->
@@ -581,7 +609,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
         <div :class="['px-6 py-4 flex items-center justify-between border-b', editing ? 'bg-[#ffce04]/20 border-[#ffce04]/40' : 'bg-emerald-50 dark:bg-emerald-900/10 border-slate-100 dark:border-slate-800']">
           <h3 class="font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <component :is="editing ? Pencil : UploadCloud" class="w-5 h-5 text-[#006A3A] dark:text-emerald-400" />
-            {{ editing ? 'Edit details' : `Add a ${kind === 'textbook' ? 'textbook' : 'past paper'}` }}
+            {{ editing ? 'Edit details' : `Add a ${addLabel}` }}
           </h3>
           <button type="button" @click="closeForm" :disabled="busy" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer"><X class="w-5 h-5" /></button>
         </div>
@@ -628,7 +656,37 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
               Where does it go?
             </p>
             <div v-if="options" class="grid grid-cols-2 gap-3">
-              <template v-if="kind === 'textbook'">
+              <template v-if="kind === 'formula'">
+                <div class="col-span-2">
+                  <label :class="labelCls">Subject</label>
+                  <select v-model="form.subject" :class="inputCls"><option v-for="s in options.subjects" :key="s.slug" :value="s.slug">{{ s.en }} · {{ s.km }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Grade</label>
+                  <select v-model.number="form.grade_from" :class="inputCls"><option v-for="g in 12" :key="g" :value="g">Grade {{ g }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Up to grade</label>
+                  <select v-model="form.grade_to" :class="inputCls"><option value="">Same grade</option><option v-for="g in 12" :key="g" :value="g" :disabled="g <= form.grade_from">Grade {{ g }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Sheet type</label>
+                  <select v-model="form.qualifier" :class="inputCls"><option value="">Formulas</option><option v-for="q in options.formula_qualifiers" :key="q.slug" :value="q.slug">{{ q.en }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Source</label>
+                  <select v-model="form.source" :class="inputCls"><option value="">None</option><option v-for="s in options.formula_sources" :key="s.slug" :value="s.slug">{{ s.en }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Language</label>
+                  <select v-model="form.language" :class="inputCls"><option value="">None</option><option v-for="l in options.languages" :key="l" :value="l" class="capitalize">{{ l }}</option></select>
+                </div>
+                <div>
+                  <label :class="labelCls">Version</label>
+                  <input v-model.number="form.version" type="number" min="1" max="99" :class="inputCls" />
+                </div>
+              </template>
+              <template v-else-if="kind === 'textbook'">
                 <div class="col-span-2">
                   <label :class="labelCls">Subject</label>
                   <select v-model="form.subject" :class="inputCls"><option v-for="s in options.subjects" :key="s.slug" :value="s.slug">{{ s.en }} · {{ s.km }}</option></select>
@@ -669,10 +727,29 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
             </div>
           </div>
 
-          <!-- Cover (optional) -->
+          <!-- Title (optional) -->
           <div>
             <p class="flex items-center gap-2 mb-2 text-sm font-bold text-slate-900 dark:text-white">
               <span class="w-6 h-6 rounded-full bg-[#006A3A] text-white text-xs flex items-center justify-center">3</span>
+              Title <span class="text-xs font-medium text-slate-400">optional</span>
+            </p>
+            <div class="space-y-3">
+              <div>
+                <label :class="labelCls">Title</label>
+                <input v-model="form.title" maxlength="200" :placeholder="editing && !editing.title_custom ? editing.title : 'Leave empty for the automatic title'" :class="inputCls" />
+              </div>
+              <div>
+                <label :class="labelCls">Subtitle</label>
+                <input v-model="form.subtitle" maxlength="200" :placeholder="editing && !editing.title_custom ? (editing.subtitle || '') : 'e.g. the English title'" :class="inputCls" />
+              </div>
+              <p class="text-[11px] text-slate-400">The app shows these instead of the title built from the subject and grade. Clear them to go back to the automatic one.</p>
+            </div>
+          </div>
+
+          <!-- Cover (optional) -->
+          <div>
+            <p class="flex items-center gap-2 mb-2 text-sm font-bold text-slate-900 dark:text-white">
+              <span class="w-6 h-6 rounded-full bg-[#006A3A] text-white text-xs flex items-center justify-center">4</span>
               Cover picture <span class="text-xs font-medium text-slate-400">optional</span>
             </p>
             <div class="flex items-center gap-4">

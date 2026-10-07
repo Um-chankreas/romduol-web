@@ -8,6 +8,7 @@ import { useTheme } from '../../composables/useTheme.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
+import Footer from '../../components/layout/Footer.vue';
 import ActivityHeatmap from '../../components/insights/ActivityHeatmap.vue';
 import XpWeeklyChart from '../../components/insights/XpWeeklyChart.vue';
 import QuizScoreChart from '../../components/insights/QuizScoreChart.vue';
@@ -417,12 +418,14 @@ const badgeTone = (code) => BADGE_TONE[BADGE_STYLE[code]?.tone] || BADGE_TONE.em
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header />
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-4 sm:p-6 lg:p-8 flex-1 w-full min-w-0 space-y-6">
         <!-- Top bar -->
         <div class="flex items-center justify-between gap-3">
@@ -1029,6 +1032,9 @@ const badgeTone = (code) => BADGE_TONE[BADGE_STYLE[code]?.tone] || BADGE_TONE.em
           </div>
         </template>
       </main>
+
+      <Footer />
+      </div>
     </div>
   </div>
 </template>

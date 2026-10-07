@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useTheme } from '../../composables/useTheme';
 import rsTextLogo from '../../assets/logo/rs_text_logo.png';
+import Footer from '../../components/layout/Footer.vue';
 
 const { isDark, toggleTheme } = useTheme();
 
@@ -264,68 +265,7 @@ const scrollTo = (id) => {
       </article>
     </div>
 
-    <!-- ── Footer ────────────────────────────────────────────────────────── -->
-    <footer class="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
-      <div class="mx-auto max-w-6xl px-5 sm:px-8 py-12">
-        <div class="grid gap-10 md:grid-cols-[1.6fr_1fr]">
-
-          <!-- Brand + about -->
-          <div>
-            <img :src="rsTextLogo" alt="Romduol Scholars" class="h-11 w-auto object-contain" />
-            <p class="mt-4 max-w-xl text-[13.5px] leading-6 text-slate-500 dark:text-slate-400">
-              {{ aboutText }}
-            </p>
-          </div>
-
-          <!-- Contact -->
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Get in touch
-            </p>
-            <ul class="mt-4 space-y-2.5 text-sm">
-              <li>
-                <a :href="`mailto:${company.email}`" class="inline-flex items-center gap-2.5 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-                  <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                  {{ company.email }}
-                </a>
-              </li>
-              <li>
-                <a :href="company.phoneHref" class="inline-flex items-center gap-2.5 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-                  <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                  {{ company.phone }}
-                </a>
-              </li>
-              <li>
-                <a :href="company.telegram" target="_blank" rel="noopener" class="inline-flex items-center gap-2.5 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-                  <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M21.94 4.6 18.7 19.9c-.24 1.08-.88 1.35-1.79.84l-4.94-3.64-2.38 2.29c-.26.26-.48.48-.99.48l.35-5.02 9.13-8.25c.4-.35-.09-.55-.61-.2L6.58 13.2l-4.87-1.52c-1.06-.33-1.08-1.06.22-1.57l19.05-7.34c.88-.33 1.65.2 1.36 1.83z"/></svg>
-                  t.me/RomduolScholars
-                </a>
-              </li>
-              <li>
-                <a :href="company.facebook" target="_blank" rel="noopener" class="inline-flex items-center gap-2.5 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-                  <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
-                  Facebook
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p class="text-xs text-slate-500 dark:text-slate-400">
-            Copyright © 2026 Romduol Scholars. All rights Reserved.
-          </p>
-          <div class="flex items-center gap-4">
-            <router-link to="/support" class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-              Support
-            </router-link>
-            <router-link to="/privacy-policy" class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition">
-              Privacy Policy
-            </router-link>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <Footer />
 
   </div>
 </template>

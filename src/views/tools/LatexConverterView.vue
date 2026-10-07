@@ -1,7 +1,10 @@
 <script setup>
+import { useLanguage } from '@/composables/useLanguage'
+const { t } = useLanguage()
 import { ref, computed } from 'vue'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import Header from '../../components/layout/Header.vue'
+import Footer from '../../components/layout/Footer.vue'
 import MarkdownContent from '../../components/ui/MarkdownContent.vue'
 import { isLatexDocument, latexToMarkdown, renderPendingFigures } from '@/utils/latexToMarkdown'
 import { unitService } from '@/services/unitService'
@@ -99,16 +102,18 @@ const reset = () => {
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header>
         <template #left>
-          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">LaTeX to Text</h1>
+          <h1 class="text-lg font-bold text-slate-900 dark:text-white truncate">{{ t('LaTeX to Text') }}</h1>
         </template>
       </Header>
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-6 sm:p-8 flex-1 w-full space-y-6 max-w-4xl">
         <p class="text-sm text-slate-600 dark:text-slate-400">
           Upload a LaTeX file (.txt or .tex) and convert it into normal, readable text.
@@ -181,6 +186,9 @@ const reset = () => {
           ></textarea>
         </div>
       </main>
+
+      <Footer />
+      </div>
     </div>
   </div>
 </template>

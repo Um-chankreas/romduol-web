@@ -13,6 +13,8 @@ import { authService } from '../../services/authService.js';
 
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
+import Footer from '../../components/layout/Footer.vue';
+import Skeleton from '../../components/ui/Skeleton.vue';
 import Breadcrumb from '../../components/layout/Breadcrumb.vue';
 import ClassCard from '../../components/classes/ClassCard.vue';
 import ConfirmModal from '../../components/modals/ConfirmModal.vue';
@@ -410,16 +412,18 @@ const handleJoinClass = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header>
         <template #left>
           <Breadcrumb :items="[{ label: 'My Classes' }]" />
         </template>
       </Header>
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-6 sm:p-8 flex-1 flex flex-col lg:flex-row justify-between items-start gap-8 w-full">
         <!-- LEFT -->
         <div class="flex-1 w-full">
@@ -430,8 +434,27 @@ const handleJoinClass = async () => {
           </div>
 
           <!-- Loading -->
-          <div v-if="loading" class="text-center py-10 text-slate-500 font-medium">
-            Loading classes...
+          <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4 gap-5" aria-busy="true" aria-label="Loading classes">
+            <div v-for="n in 4" :key="n" class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+              <div class="flex items-start justify-between">
+                <Skeleton class="h-5 w-2/3" />
+                <Skeleton class="h-5 w-5 !rounded-full" />
+              </div>
+              <Skeleton class="mt-3 h-4 w-12" />
+              <Skeleton class="mt-3 h-3.5 w-24" />
+              <div class="mt-3 flex gap-2">
+                <Skeleton class="h-5 w-14" />
+                <Skeleton class="h-5 w-24" />
+              </div>
+              <div class="mt-4 flex items-center justify-between">
+                <div class="flex -space-x-2">
+                  <Skeleton class="h-7 w-7 !rounded-full ring-2 ring-white dark:ring-slate-900" />
+                  <Skeleton class="h-7 w-7 !rounded-full ring-2 ring-white dark:ring-slate-900" />
+                  <Skeleton class="h-7 w-7 !rounded-full ring-2 ring-white dark:ring-slate-900" />
+                </div>
+                <Skeleton class="h-8 w-28 !rounded-lg" />
+              </div>
+            </div>
           </div>
 
           <!-- Store/API Error -->
@@ -522,6 +545,9 @@ const handleJoinClass = async () => {
           </div>
         </div>
       </main>
+
+      <Footer />
+      </div>
     </div>
 
     <!-- JOIN MODAL -->

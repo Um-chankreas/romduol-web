@@ -5,6 +5,7 @@ import { authService } from '@/services/authService'
 import { permissionsService } from '@/services/permissionsService'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
+import Footer from '@/components/layout/Footer.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 
 defineOptions({ name: 'RoleManagementView' })
@@ -209,16 +210,18 @@ onMounted(fetchUsers)
 </script>
 
 <template>
-  <div class="flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <Sidebar class="hidden md:flex" />
 
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0">
       <Header>
         <template #left>
           <Breadcrumb :items="[{ label: 'Roles & Permissions' }, { label: 'Roles' }]" />
         </template>
       </Header>
 
+      <!-- only this area scrolls; sidebar + header stay put -->
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-6 sm:p-8 flex-1 w-full">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
@@ -329,6 +332,9 @@ onMounted(fetchUsers)
           </div>
         </div>
       </main>
+
+      <Footer />
+      </div>
     </div>
 
     <!-- NEW ACCOUNT MODAL -->

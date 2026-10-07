@@ -1,5 +1,6 @@
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 p-6 sm:p-10 text-slate-900 dark:text-slate-100 transition-colors">
+  <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div class="flex-1 p-6 sm:p-10">
     <div class="max-w-4xl mx-auto space-y-6 text-left">
       
       <!-- Feedback Messages (Error & Success Banners) -->
@@ -334,9 +335,12 @@
       </template>
 
     </div>
+    </div>
+    <Footer />
   </div>
 </template>
 <script setup>
+import Footer from '@/components/layout/Footer.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { quizService } from '@/services/quizService'

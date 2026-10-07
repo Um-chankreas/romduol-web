@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useTheme } from '../../composables/useTheme';
+import { useLanguage } from '../../composables/useLanguage';
 import { authService } from '../../services/authService';
 import EditProfileModal from '../modals/EditProfileModal.vue';
 
 const { isDark, toggleTheme } = useTheme();
+const { lang, setLang, t } = useLanguage();
 
 const currentUser = ref(authService.getCurrentUser());
 
@@ -19,28 +21,19 @@ const initials = computed(() =>
     .join('')
 );
 
-const languages = [
-  { code: 'en', label: 'English' },
-  { code: 'km', label: 'ភាសាខ្មែរ' }
-];
-const selectedLanguage = ref(localStorage.getItem('preferredLanguage') || 'en');
-
 /**
  * Profile Dropdown
  */
 const showMenu = ref(false);
-const showLanguageOptions = ref(false);
 
 const handleClickOutside = (e) => {
   if (!e.target.closest('.profile-menu')) {
     showMenu.value = false;
-    showLanguageOptions.value = false;
   }
 };
 
 const toggleMenu = () => {
   showMenu.value = !showMenu.value;
-  showLanguageOptions.value = false;
   if (showMenu.value) {
     document.addEventListener('click', handleClickOutside);
   } else {
@@ -51,13 +44,6 @@ const toggleMenu = () => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
 });
-
-const selectLanguage = (code) => {
-  selectedLanguage.value = code;
-  localStorage.setItem('preferredLanguage', code);
-  showLanguageOptions.value = false;
-  showMenu.value = false;
-};
 
 const handleLogout = () => {
   showMenu.value = false;
@@ -104,12 +90,20 @@ const handleSaveProfile = async (data) => {
 </script>
 
 <template>
-  <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+  <header class="sticky top-0 z-30 w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
     <div class="min-w-0 flex-1">
       <slot name="left" />
     </div>
 
-    <div class="flex items-center gap-3.5 shrink-0">
+    <div class="relative flex items-center gap-3.5 shrink-0">
+      <!-- Language: English / Khmer -->
+      <div class="inline-flex rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 p-0.5" role="group" aria-label="Language">
+        <button v-for="l in [{ c: 'en', l: 'EN' }, { c: 'km', l: 'ខ្មែរ' }]" :key="l.c" type="button" @click="setLang(l.c)"
+          :aria-pressed="lang === l.c"
+          :class="['px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer',
+            lang === l.c ? 'bg-[#006A3A] text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white']">{{ l.l }}</button>
+      </div>
+
       <button
         @click="toggleTheme"
         type="button"
@@ -154,28 +148,8 @@ const handleSaveProfile = async (data) => {
             @click="openEditProfile"
             class="w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
           >
-            <span>👤</span> Edit Profile
+            <span>👤</span> {{ t('Edit Profile') }}
           </button>
-
-          <!-- Change Language -->
-          <button
-            @click="showLanguageOptions = !showLanguageOptions"
-            class="w-full flex items-center justify-between gap-2.5 text-left px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
-          >
-            <span class="flex items-center gap-2.5"><span>🌐</span> Change Language</span>
-            <span class="text-slate-400 text-[10px]">{{ showLanguageOptions ? '▲' : '▼' }}</span>
-          </button>
-          <div v-if="showLanguageOptions" class="bg-slate-50 dark:bg-slate-900/40">
-            <button
-              v-for="lang in languages"
-              :key="lang.code"
-              @click="selectLanguage(lang.code)"
-              class="w-full flex items-center justify-between gap-2.5 text-left pl-9 pr-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
-            >
-              <span>{{ lang.label }}</span>
-              <span v-if="selectedLanguage === lang.code" class="text-emerald-600 dark:text-emerald-400">✓</span>
-            </button>
-          </div>
 
           <div class="my-1.5 border-t border-slate-100 dark:border-slate-700"></div>
 
@@ -183,7 +157,7 @@ const handleSaveProfile = async (data) => {
             @click="handleLogout"
             class="w-full flex items-center gap-2.5 text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition cursor-pointer"
           >
-            <span>🚪</span> Logout
+            <span>🚪</span> {{ t('Logout') }}
           </button>
         </div>
       </div>

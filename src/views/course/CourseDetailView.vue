@@ -6,6 +6,7 @@ import UploadLessonModal from '@/components/modals/UploadLessonModal.vue'
 import EditLessonModal from '@/components/modals/EditLessonModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 import Header from '@/components/layout/Header.vue'
+import Footer from '@/components/layout/Footer.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb.vue'
 import QuizListView from '@/views/course/QuizListView.vue'
 import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
@@ -506,7 +507,8 @@ onMounted(() => {
       </Header>
 
       <!-- Scrollable Content Area -->
-      <main class="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8 flex flex-col gap-6">
+      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col">
+      <main class="flex-1 p-6 sm:p-8 flex flex-col gap-6">
         <div class="w-full max-w-7xl mx-auto flex flex-col gap-6">
           <!-- BACK BUTTON -->
           <div class="flex items-center">
@@ -927,6 +929,8 @@ onMounted(() => {
           </template>
         </div>
       </main>
+      <Footer />
+      </div>
     </div>
       <UploadLessonModal
         v-if="showUploadModal"
