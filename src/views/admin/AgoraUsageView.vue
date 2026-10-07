@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, onActivated } from 'vue'
-import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { ref, reactive, computed, onMounted, onActivated } from 'vue'
+import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { agoraUsageService } from '@/services/agoraUsageService'
+import { authService } from '@/services/authService'
 import { useLanguage } from '@/composables/useLanguage'
 
 defineOptions({ name: 'AgoraUsageView' })
@@ -17,19 +18,88 @@ const data = ref(null)
 const loading = ref(true)
 const error = ref('')
 
+// ---- accounts ----
+const isSuperAdmin = authService.getCurrentUser()?.role === 'super_admin'
+const accounts = ref([])
+const viewing = ref('')            // account whose usage is shown ('' = the active one)
+const switching = ref('')
+const notice = ref('')
+const showAdd = ref(false)
+const saving = ref(false)
+const addError = ref('')
+const form = reactive({ label: '', app_id: '', app_certificate: '', free_minutes: 10000 })
+
+const errMsg = (e, fallback) => e.response?.data?.error || fallback
+const loadAccounts = async () => {
+  try { accounts.value = await agoraUsageService.listAccounts() } catch (e) { error.value = errMsg(e, 'Could not load Agora accounts.') }
+}
+const activeAccount = computed(() => accounts.value.find((a) => a.is_active))
+const maskId = (id) => (id ? `${id.slice(0, 4)}…${id.slice(-4)}` : '—')
+
 const load = async () => {
   loading.value = true
   error.value = ''
   try {
-    data.value = await agoraUsageService.getUsage(month.value)
+    data.value = await agoraUsageService.getUsage(month.value, viewing.value || undefined)
   } catch (e) {
-    error.value = e.response?.data?.error || 'Could not load Agora usage.'
+    error.value = errMsg(e, 'Could not load Agora usage.')
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
-onActivated(() => { if (data.value) load() })
+const refreshAll = () => Promise.all([loadAccounts(), load()])
+onMounted(refreshAll)
+onActivated(() => { if (data.value) refreshAll() })
+
+const view = (a) => { viewing.value = a.id; load() }
+
+const switchTo = async (a) => {
+  if (!window.confirm(`${t('Switch live classes to')} "${a.label}"?\n\n${t('Classes that start from now on will use this account. A class that is already running keeps its current one.')}`)) return
+  switching.value = a.id
+  error.value = ''
+  notice.value = ''
+  try {
+    accounts.value = await agoraUsageService.activateAccount(a.id)
+    viewing.value = ''
+    notice.value = `${t('Now using')} "${a.label}" ${t('for new live classes.')}`
+    await load()
+  } catch (e) {
+    error.value = errMsg(e, 'Could not switch account.')
+  } finally {
+    switching.value = ''
+  }
+}
+
+const removeAcc = async (a) => {
+  if (!window.confirm(`${t('Remove')} "${a.label}"?`)) return
+  error.value = ''
+  try {
+    accounts.value = await agoraUsageService.removeAccount(a.id)
+    if (viewing.value === a.id) { viewing.value = ''; await load() }
+  } catch (e) {
+    error.value = errMsg(e, 'Could not remove account.')
+  }
+}
+
+const openAdd = () => {
+  Object.assign(form, { label: '', app_id: '', app_certificate: '', free_minutes: 10000 })
+  addError.value = ''
+  showAdd.value = true
+}
+const saveAccount = async () => {
+  saving.value = true
+  addError.value = ''
+  try {
+    accounts.value = await agoraUsageService.addAccount({ ...form })
+    showAdd.value = false
+    form.app_certificate = ''
+    notice.value = t('Account added. Press "Use this account" when you want new classes to switch to it.')
+  } catch (e) {
+    addError.value = errMsg(e, 'Could not add account.')
+  } finally {
+    saving.value = false
+  }
+}
 
 const shiftMonth = (delta) => {
   const [y, m] = month.value.split('-').map(Number)
@@ -97,13 +167,70 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
             <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" /> {{ error }}
           </p>
 
+          <p v-if="notice" class="flex items-start gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 class="w-4 h-4 mt-0.5 shrink-0" /> {{ notice }}
+          </p>
+
+          <!-- Agora accounts: switch when one runs out -->
+          <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 sm:p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="text-sm font-extrabold text-slate-900 dark:text-white">{{ t('Agora accounts') }}</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ t('New live classes use the account marked Active. Switch when its free minutes run out.') }}</p>
+              </div>
+              <button v-if="isSuperAdmin" type="button" @click="openAdd"
+                class="inline-flex items-center gap-1.5 bg-[#006A3A] hover:bg-[#005A31] text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer">
+                <Plus class="w-4 h-4" /> {{ t('Add account') }}
+              </button>
+            </div>
+            <Skeleton v-if="!accounts.length" class="h-24 w-full" />
+            <div v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div v-for="a in accounts" :key="a.id"
+                :class="['rounded-2xl border p-4 flex flex-col gap-3 transition',
+                  a.is_active ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700',
+                  (viewing || activeAccount?.id) === a.id ? 'bg-emerald-50/40 dark:bg-emerald-500/5' : '']">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="font-bold text-slate-900 dark:text-white truncate">{{ a.label }}</p>
+                    <p class="text-[11px] text-slate-400 flex items-center gap-1"><KeyRound class="w-3 h-3" /> {{ maskId(a.app_id) }}</p>
+                  </div>
+                  <span v-if="a.is_active" class="shrink-0 px-2 py-0.5 rounded-full bg-[#006A3A] text-white text-[10px] font-bold uppercase tracking-wide">{{ t('Active') }}</span>
+                </div>
+                <div>
+                  <div class="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    <span>{{ fmt(a.used_minutes) }} / {{ fmt(a.free_minutes) }} min</span>
+                    <span :class="a.percent_used >= 90 ? 'text-red-600' : ''">{{ a.percent_used }}%</span>
+                  </div>
+                  <div class="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div :class="['h-full rounded-full', a.percent_used >= 90 ? 'bg-red-500' : a.percent_used >= 70 ? 'bg-amber-500' : 'bg-[#006A3A]']"
+                      :style="{ width: Math.min(100, a.percent_used) + '%' }" />
+                  </div>
+                  <p v-if="a.percent_used >= 100" class="mt-1 text-[11px] font-bold text-red-600">{{ t('Free minutes used up') }}</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-auto">
+                  <button type="button" @click="view(a)"
+                    class="text-xs font-bold text-slate-600 dark:text-slate-300 hover:underline cursor-pointer">{{ t('View usage') }}</button>
+                  <template v-if="isSuperAdmin">
+                    <button v-if="!a.is_active" type="button" @click="switchTo(a)" :disabled="switching === a.id"
+                      class="ml-auto px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+                      {{ switching === a.id ? t('Switching…') : t('Use this account') }}
+                    </button>
+                    <button v-if="a.source === 'db' && !a.is_active" type="button" @click="removeAcc(a)" :aria-label="t('Remove')"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer"><Trash2 class="w-4 h-4" /></button>
+                  </template>
+                </div>
+              </div>
+            </div>
+            <p class="mt-4 text-[11px] text-slate-400">{{ t('A class that is already running stays on the account it started with, so students and the teacher never end up in different rooms.') }}</p>
+          </section>
+
           <!-- Quota meter -->
           <section class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 sm:p-6">
             <Skeleton v-if="loading && !data" class="h-24 w-full" />
             <template v-else-if="data">
               <div class="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Minutes used') }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Minutes used') }} · <b class="text-slate-700 dark:text-slate-200">{{ data.account.label }}</b></p>
                   <p class="text-4xl font-extrabold text-slate-900 dark:text-white leading-none mt-1">
                     {{ fmt(data.used_minutes) }}
                     <span class="text-base font-bold text-slate-400"> / {{ fmt(data.free_minutes) }}</span>
@@ -211,6 +338,42 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
           </div>
         </main>
         <Footer />
+
+        <!-- Add account -->
+        <div v-if="showAdd" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" @click.self="!saving && (showAdd = false)">
+          <form class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-6 space-y-4" @submit.prevent="saveAccount">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ t('Add Agora account') }}</h3>
+              <button type="button" @click="showAdd = false" class="p-1 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Close"><X class="w-4 h-4" /></button>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Copy the App ID and App Certificate from your project in the Agora console. The certificate is stored encrypted and is never shown again.') }}</p>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Name') }}
+              <input v-model="form.label" required maxlength="60" placeholder="Account 2"
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">App ID
+              <input v-model="form.app_id" required autocomplete="off" spellcheck="false" maxlength="32"
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">App Certificate
+              <input v-model="form.app_certificate" type="password" required autocomplete="new-password" spellcheck="false" maxlength="32"
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Free minutes per month') }}
+              <input v-model.number="form.free_minutes" type="number" min="1" required
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <p v-if="addError" class="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" /> {{ addError }}
+            </p>
+            <div class="flex justify-end gap-2 pt-1">
+              <button type="button" @click="showAdd = false" :disabled="saving"
+                class="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">{{ t('Cancel') }}</button>
+              <button type="submit" :disabled="saving"
+                class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">{{ saving ? t('Saving…') : t('Add account') }}</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
