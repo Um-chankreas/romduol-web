@@ -82,6 +82,18 @@ const switchTo = async (a) => {
   }
 }
 
+const makeEditable = async () => {
+  if (!window.confirm(`${t('Make the default account editable?')}\n\n${t('It is copied into the database (the certificate is stored encrypted) so you can edit or delete it like the others. Usage and running classes carry over.')}`)) return
+  error.value = ''
+  try {
+    accounts.value = await agoraUsageService.makeEnvEditable()
+    notice.value = t('The default account is now editable.')
+    await load()
+  } catch (e) {
+    error.value = errMsg(e, 'Could not make the account editable.')
+  }
+}
+
 const removeAcc = async (a) => {
   if (!window.confirm(`${t('Remove')} "${a.label}"?`)) return
   error.value = ''
@@ -271,7 +283,13 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                               class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer">
                               <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
                           </template>
-                          <p v-else class="px-3 py-2 text-[11px] text-slate-400">{{ t('Set in the server .env') }}</p>
+                          <template v-else>
+                            <div class="my-1 border-t border-slate-100 dark:border-slate-700" />
+                            <button type="button" @click="menuFor = ''; makeEditable()"
+                              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
+                              <Pencil class="w-3.5 h-3.5" /> {{ t('Make editable') }}</button>
+                            <p class="px-3 pb-2 text-[11px] text-slate-400">{{ t('Set in the server .env') }}</p>
+                          </template>
                         </template>
                       </div>
                     </div>

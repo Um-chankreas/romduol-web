@@ -31,6 +31,11 @@ export const agoraUsageService = {
         const res = await api.post(`/admin/agora-accounts/${encodeURIComponent(id)}/usage`, { used_minutes: usedMinutes })
         return res.data.data.accounts
     },
+    // Copy the .env account into the database so it can be edited / deleted.
+    async makeEnvEditable() {
+        const res = await api.post('/admin/agora-accounts/env/import')
+        return res.data.data.accounts
+    },
     async activateAccount(id) {
         const res = await api.post(`/admin/agora-accounts/${encodeURIComponent(id)}/activate`)
         return res.data.data.accounts
