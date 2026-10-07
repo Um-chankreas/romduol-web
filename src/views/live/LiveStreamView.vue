@@ -273,8 +273,9 @@
         <!-- Microphone toggle + device picker -->
         <div class="relative flex items-center gap-0.5" data-device-menu>
         <button
-          @click="toggleAudio"
-          :title="!micAvailable ? 'No microphone available — click to retry' : (audioEnabled ? 'Mute microphone' : 'Unmute microphone')"
+          @click="isTeacher ? toggleAudio() : stopSpeaking()"
+          :disabled="!isTeacher && handBusy"
+          :title="!isTeacher ? 'Turn off microphone (stop speaking)' : !micAvailable ? 'No microphone available — click to retry' : (audioEnabled ? 'Mute microphone' : 'Unmute microphone')"
           :class="[
             'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer',
             audioEnabled ? 'bg-slate-700 text-slate-100 hover:bg-slate-600' : 'bg-red-600 text-white hover:bg-red-700'
@@ -539,20 +540,8 @@
         </svg>
       </button>
 
-      <!-- Student: while speaking -->
-      <template v-if="!isTeacher && handStatus === 'speaking'">
-        <button
-          @click="stopSpeaking"
-          :disabled="handBusy"
-          class="px-3.5 md:px-5 py-2.5 md:py-3 rounded-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs md:text-sm transition shadow-md cursor-pointer disabled:opacity-40 flex items-center space-x-1.5"
-        >
-          <span class="text-base leading-none">🎤</span>
-          <span>Stop speaking</span>
-        </button>
-      </template>
-
       <!-- Student: audience — microphone, camera and raise-hand buttons -->
-      <template v-else-if="!isTeacher">
+      <template v-if="!isTeacher && handStatus !== 'speaking'">
         <!-- Microphone: joins the discussion with your voice -->
         <button
           @click="startSpeaking({ mic: true, camera: false })"
