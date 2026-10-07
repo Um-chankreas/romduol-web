@@ -249,26 +249,36 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                   </div>
                   <p v-if="a.percent_used >= 100" class="mt-1 text-[11px] font-bold text-red-600">{{ t('Free minutes used up') }}</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 mt-auto">
-                  <button type="button" @click="view(a)"
-                    class="text-xs font-bold text-slate-600 dark:text-slate-300 hover:underline cursor-pointer">{{ t('View usage') }}</button>
+                <!-- Actions: one clear primary, then quiet secondary buttons -->
+                <div class="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
                   <template v-if="isSuperAdmin">
-                    <button type="button" @click="openSync(a)"
-                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
-                      <RefreshCw class="w-3.5 h-3.5" /> {{ t('Update usage') }}</button>
-                    <button v-if="!a.is_active" type="button" @click="switchTo(a)" :disabled="switching === a.id"
-                      class="ml-auto px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+                    <div v-if="a.is_active" class="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400 text-xs font-bold">
+                      <CheckCircle2 class="w-4 h-4" /> {{ t('In use for new classes') }}
+                    </div>
+                    <button v-else type="button" @click="switchTo(a)" :disabled="switching === a.id"
+                      class="w-full py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
                       {{ switching === a.id ? t('Switching…') : t('Use this account') }}
                     </button>
-                    <button v-if="a.source === 'db'" type="button" @click="openEdit(a)"
-                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
-                      <Pencil class="w-3.5 h-3.5" /> {{ t('Edit') }}</button>
-                    <button v-if="a.source === 'db'" type="button" @click="removeAcc(a)" :disabled="a.is_active"
-                      :title="a.is_active ? t('Switch to another account before deleting this one') : ''"
-                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/50 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
-                      <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
-                    <span v-if="a.source === 'env'" class="text-[11px] text-slate-400">{{ t('Set in the server .env') }}</span>
                   </template>
+
+                  <div class="flex items-center justify-between gap-1 -mx-1">
+                    <button type="button" @click="view(a)" :title="t('View usage')"
+                      class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                      <Activity class="w-3.5 h-3.5" /> {{ t('Usage') }}</button>
+                    <template v-if="isSuperAdmin">
+                      <button type="button" @click="openSync(a)" :title="t('Update usage')"
+                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <RefreshCw class="w-3.5 h-3.5" /> {{ t('Update') }}</button>
+                      <button v-if="a.source === 'db'" type="button" @click="openEdit(a)" :title="t('Edit')"
+                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <Pencil class="w-3.5 h-3.5" /> {{ t('Edit') }}</button>
+                      <button v-if="a.source === 'db'" type="button" @click="removeAcc(a)" :disabled="a.is_active"
+                        :title="a.is_active ? t('Switch to another account before deleting this one') : t('Delete')"
+                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer">
+                        <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
+                    </template>
+                  </div>
+                  <p v-if="a.source === 'env' && isSuperAdmin" class="text-[11px] text-slate-400 text-center">{{ t('Set in the server .env') }}</p>
                 </div>
               </div>
             </div>
