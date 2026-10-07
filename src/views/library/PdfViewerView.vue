@@ -50,6 +50,13 @@ const renderPage = async (n) => {
   const version = renderVersion
   rendered.set(n, version)
   const page = await pdf.getPage(n)
+  // Pages in one PDF can differ in size; size the frame to this page's real
+  // dimensions so nothing is clipped (the frame starts from page 1's size).
+  const natural = page.getViewport({ scale: 1 })
+  const known = pageSizes.value[n]
+  if (!known || known.w !== natural.width || known.h !== natural.height) {
+    pageSizes.value = { ...pageSizes.value, [n]: { w: natural.width, h: natural.height } }
+  }
   const sc = baseScale * zoom.value
   const dpr = window.devicePixelRatio || 1
   const viewport = page.getViewport({ scale: sc * dpr })
