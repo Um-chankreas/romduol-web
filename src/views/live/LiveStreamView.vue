@@ -747,7 +747,10 @@ function attachVideo(key, track, targetId) {
   if (!el) return;
   const cur = attached.get(key);
   if (cur && cur.el === el && cur.track === track && el.querySelector('video')) return;
-  track.play(el, { fit: 'cover' });
+  // The presenter's tile uses 'contain': a shared screen/slide must never be
+  // cropped or zoomed to fill the tile (that is what made it look blurry and cut
+  // off). Camera thumbnails and our own preview keep 'cover'.
+  track.play(el, { fit: targetId.startsWith('remote-player-') ? 'contain' : 'cover' });
   attached.set(key, { el, track });
 }
 
@@ -2243,6 +2246,10 @@ const leaveLiveClass = async () => {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
+}
+/* The teacher's stream (camera or shared screen) is shown whole, never cropped. */
+[id^="remote-player-"] :deep(video) {
+  object-fit: contain !important;
 }
 
 .hand-enter-active,
