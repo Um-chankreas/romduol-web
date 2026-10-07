@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { authService } from '../../services/authService'; // Path to your authService
 import { useTheme } from '../../composables/useTheme';
 import { useLanguage } from '../../composables/useLanguage';
+import rsLogo from '../../assets/logo/RS_logo.png';
 import rsTextLogo from '../../assets/logo/rs_text_logo.png';
 import BaseInput from '../../components/ui/BaseInput.vue';
 import BaseButton from '../../components/ui/BaseButton.vue';
@@ -60,14 +61,15 @@ const handleSubmit = async () => {
       </div>
     </header>
 
-    <div class="flex-1 w-full flex flex-col items-center justify-center p-6">
+    <div class="relative flex-1 w-full flex flex-col items-center justify-center p-6 overflow-hidden bg-gradient-to-b from-[#F1FCF0] via-white to-emerald-50 dark:from-slate-950 dark:via-slate-950 dark:to-[#06140f]">
+    <!-- soft decorative glows -->
+    <div class="pointer-events-none absolute -top-32 -left-24 w-96 h-96 rounded-full bg-emerald-400/20 dark:bg-emerald-500/10 blur-3xl"></div>
+    <div class="pointer-events-none absolute -bottom-32 -right-24 w-96 h-96 rounded-full bg-amber-300/25 dark:bg-amber-400/10 blur-3xl"></div>
     <!-- Educator Portal Card -->
-    <div class="w-full max-w-[560px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[28px] px-10 py-6 shadow-xl text-center flex flex-col items-center">
+    <div class="w-full max-w-[560px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[28px] px-10 py-8 shadow-2xl shadow-emerald-900/10 dark:shadow-black/40 backdrop-blur text-center flex flex-col items-center">
       
       <!-- Brand Logo -->
-      <div class="w-12 h-12 mb-2 rounded-xl bg-emerald-800/10 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-800 dark:text-emerald-400 font-bold text-xl">
-        🎓
-      </div>
+      <img :src="rsLogo" alt="Romduol Scholars" class="w-16 h-16 mb-2 object-contain drop-shadow-sm" />
 
       <h1 
         class="text-2xl font-bold tracking-tight" 
