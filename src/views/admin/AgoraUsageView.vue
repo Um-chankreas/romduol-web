@@ -1,6 +1,6 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onActivated } from 'vue'
-import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, onActivated } from 'vue'
+import { Activity, Video, Clock, TrendingUp, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Plus, Trash2, Pencil, MoreHorizontal, CheckCircle2, X, KeyRound } from 'lucide-vue-next'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
@@ -39,6 +39,12 @@ const loadAccounts = async () => {
   try { accounts.value = await agoraUsageService.listAccounts() } catch (e) { error.value = errMsg(e, 'Could not load Agora accounts.') }
 }
 const activeAccount = computed(() => accounts.value.find((a) => a.is_active))
+// The account in use goes first; the rest keep their order.
+const sortedAccounts = computed(() => [...accounts.value].sort((x, y) => Number(y.is_active) - Number(x.is_active)))
+
+// Which card's ⋯ menu is open; any outside click closes it.
+const menuFor = ref('')
+const closeMenu = (e) => { if (!e.target.closest?.('.agora-menu')) menuFor.value = '' }
 const maskId = (id) => (id ? `${id.slice(0, 4)}…${id.slice(-4)}` : '—')
 
 const load = async () => {
@@ -53,7 +59,8 @@ const load = async () => {
   }
 }
 const refreshAll = () => Promise.all([loadAccounts(), load()])
-onMounted(refreshAll)
+onMounted(() => { refreshAll(); document.addEventListener('click', closeMenu) })
+onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 onActivated(() => { if (data.value) refreshAll() })
 
 const view = (a) => { viewing.value = a.id; load() }
@@ -226,60 +233,70 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
             </div>
             <Skeleton v-if="!accounts.length" class="h-24 w-full" />
             <div v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div v-for="a in accounts" :key="a.id"
-                :class="['rounded-2xl border p-4 flex flex-col gap-3 transition',
-                  a.is_active ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700',
-                  (viewing || activeAccount?.id) === a.id ? 'bg-emerald-50/40 dark:bg-emerald-500/5' : '']">
+              <div v-for="a in sortedAccounts" :key="a.id"
+                :class="['relative rounded-2xl border p-4 flex flex-col gap-3 transition',
+                  a.is_active
+                    ? 'bg-[#006A3A] border-[#006A3A] text-white shadow-md shadow-emerald-900/10'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700']">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
-                    <p class="font-bold text-slate-900 dark:text-white truncate">{{ a.label }}</p>
-                    <p v-if="a.email" class="text-[11px] text-slate-500 dark:text-slate-400 truncate" :title="a.email">{{ a.email }}</p>
-                    <p class="text-[11px] text-slate-400 flex items-center gap-1"><KeyRound class="w-3 h-3" /> {{ maskId(a.app_id) }}</p>
+                    <p :class="['font-bold truncate', a.is_active ? 'text-white' : 'text-slate-900 dark:text-white']">{{ a.label }}</p>
+                    <p v-if="a.email" :class="['text-[11px] truncate', a.is_active ? 'text-white/80' : 'text-slate-500 dark:text-slate-400']" :title="a.email">{{ a.email }}</p>
+                    <p :class="['text-[11px] flex items-center gap-1', a.is_active ? 'text-white/60' : 'text-slate-400']"><KeyRound class="w-3 h-3" /> {{ maskId(a.app_id) }}</p>
                   </div>
-                  <span v-if="a.is_active" class="shrink-0 px-2 py-0.5 rounded-full bg-[#006A3A] text-white text-[10px] font-bold uppercase tracking-wide">{{ t('Active') }}</span>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <span v-if="a.is_active" class="px-2 py-0.5 rounded-full bg-[#ffce04] text-[#3d3000] text-[10px] font-bold uppercase tracking-wide">{{ t('Active') }}</span>
+
+                    <!-- ⋯ menu -->
+                    <div class="agora-menu relative">
+                      <button type="button" @click.stop="menuFor = menuFor === a.id ? '' : a.id" :aria-expanded="menuFor === a.id" :aria-label="t('More options')"
+                        :class="['p-1.5 rounded-lg cursor-pointer transition', a.is_active ? 'text-white hover:bg-white/15' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800']">
+                        <MoreHorizontal class="w-4 h-4" />
+                      </button>
+                      <div v-if="menuFor === a.id" class="absolute right-0 top-full mt-1 z-30 w-48 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg py-1 text-slate-700 dark:text-slate-200">
+                        <button type="button" @click="menuFor = ''; view(a)"
+                          class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
+                          <Activity class="w-3.5 h-3.5" /> {{ t('View usage') }}</button>
+                        <template v-if="isSuperAdmin">
+                          <button type="button" @click="menuFor = ''; openSync(a)"
+                            class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
+                            <RefreshCw class="w-3.5 h-3.5" /> {{ t('Update usage') }}</button>
+                          <template v-if="a.source === 'db'">
+                            <button type="button" @click="menuFor = ''; openEdit(a)"
+                              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
+                              <Pencil class="w-3.5 h-3.5" /> {{ t('Edit') }}</button>
+                            <div class="my-1 border-t border-slate-100 dark:border-slate-700" />
+                            <button type="button" @click="menuFor = ''; removeAcc(a)" :disabled="a.is_active"
+                              :title="a.is_active ? t('Switch to another account before deleting this one') : ''"
+                              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer">
+                              <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
+                          </template>
+                          <p v-else class="px-3 py-2 text-[11px] text-slate-400">{{ t('Set in the server .env') }}</p>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
                 <div>
-                  <div class="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  <div :class="['flex justify-between text-xs font-semibold', a.is_active ? 'text-white' : 'text-slate-600 dark:text-slate-300']">
                     <span>{{ fmt(a.used_minutes) }} / {{ fmt(a.free_minutes) }} min</span>
-                    <span :class="a.percent_used >= 90 ? 'text-red-600' : ''">{{ a.percent_used }}%</span>
+                    <span :class="a.percent_used >= 90 ? (a.is_active ? 'text-[#ffce04]' : 'text-red-600') : ''">{{ a.percent_used }}%</span>
                   </div>
-                  <div class="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                    <div :class="['h-full rounded-full', a.percent_used >= 90 ? 'bg-red-500' : a.percent_used >= 70 ? 'bg-amber-500' : 'bg-[#006A3A]']"
+                  <div :class="['mt-1 h-2 rounded-full overflow-hidden', a.is_active ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800']">
+                    <div :class="['h-full rounded-full', a.is_active ? 'bg-[#ffce04]' : a.percent_used >= 90 ? 'bg-red-500' : a.percent_used >= 70 ? 'bg-amber-500' : 'bg-[#006A3A]']"
                       :style="{ width: Math.min(100, a.percent_used) + '%' }" />
                   </div>
-                  <p v-if="a.percent_used >= 100" class="mt-1 text-[11px] font-bold text-red-600">{{ t('Free minutes used up') }}</p>
+                  <p v-if="a.percent_used >= 100" :class="['mt-1 text-[11px] font-bold', a.is_active ? 'text-[#ffce04]' : 'text-red-600']">{{ t('Free minutes used up') }}</p>
                 </div>
-                <!-- Actions: one clear primary, then quiet secondary buttons -->
-                <div class="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-                  <template v-if="isSuperAdmin">
-                    <div v-if="a.is_active" class="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400 text-xs font-bold">
-                      <CheckCircle2 class="w-4 h-4" /> {{ t('In use for new classes') }}
-                    </div>
-                    <button v-else type="button" @click="switchTo(a)" :disabled="switching === a.id"
-                      class="w-full py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
-                      {{ switching === a.id ? t('Switching…') : t('Use this account') }}
-                    </button>
-                  </template>
 
-                  <div class="flex items-center justify-between gap-1 -mx-1">
-                    <button type="button" @click="view(a)" :title="t('View usage')"
-                      class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
-                      <Activity class="w-3.5 h-3.5" /> {{ t('Usage') }}</button>
-                    <template v-if="isSuperAdmin">
-                      <button type="button" @click="openSync(a)" :title="t('Update usage')"
-                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
-                        <RefreshCw class="w-3.5 h-3.5" /> {{ t('Update') }}</button>
-                      <button v-if="a.source === 'db'" type="button" @click="openEdit(a)" :title="t('Edit')"
-                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
-                        <Pencil class="w-3.5 h-3.5" /> {{ t('Edit') }}</button>
-                      <button v-if="a.source === 'db'" type="button" @click="removeAcc(a)" :disabled="a.is_active"
-                        :title="a.is_active ? t('Switch to another account before deleting this one') : t('Delete')"
-                        class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer">
-                        <Trash2 class="w-3.5 h-3.5" /> {{ t('Delete') }}</button>
-                    </template>
-                  </div>
-                  <p v-if="a.source === 'env' && isSuperAdmin" class="text-[11px] text-slate-400 text-center">{{ t('Set in the server .env') }}</p>
-                </div>
+                <p v-if="a.is_active" class="mt-auto flex items-center gap-1.5 text-xs font-bold text-white/90">
+                  <CheckCircle2 class="w-4 h-4" /> {{ t('In use for new classes') }}
+                </p>
+                <button v-else-if="isSuperAdmin" type="button" @click="switchTo(a)" :disabled="switching === a.id"
+                  class="mt-auto w-full py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+                  {{ switching === a.id ? t('Switching…') : t('Use this account') }}
+                </button>
               </div>
             </div>
             <p class="mt-4 text-[11px] text-slate-400">{{ t('A class that is already running stays on the account it started with, so students and the teacher never end up in different rooms.') }}</p>

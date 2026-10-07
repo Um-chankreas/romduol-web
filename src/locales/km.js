@@ -118,6 +118,7 @@ export default {
   "In use for new classes": "កំពុងប្រើសម្រាប់ថ្នាក់ថ្មី",
   "Usage": "ការប្រើប្រាស់",
   "Update": "ធ្វើបច្ចុប្បន្នភាព",
+  "More options": "ជម្រើសបន្ថែម",
   "Programs": "កម្មវិធីសិក្សា",
   "Olympiad Mathematics": "គណិតវិទ្យាអូឡាំពិក",
   "Olympiad Physics": "រូបវិទ្យាអូឡាំពិក",
