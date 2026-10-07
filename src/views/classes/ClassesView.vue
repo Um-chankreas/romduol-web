@@ -107,9 +107,12 @@ const fetchSchedules = async () => {
 // session instead of starting a second one. Only teachers can start/own live
 // classes (POST /live-classes is teacher-only), so only they fetch it.
 const isTeacherRole = authService.getCurrentUser()?.role === 'teacher';
+// Students never start a class; they only see "Join Class" while one is live.
+const isStudentRole = authService.getCurrentUser()?.role === 'student';
+const watchesLive = isTeacherRole || isStudentRole;
 const activeLiveByCourse = ref({});
 const fetchActiveLive = async () => {
-  if (!isTeacherRole) return;
+  if (!watchesLive) return;
   try {
     const live = await liveClassService.getMyLiveClasses('active');
     const map = {};
@@ -131,7 +134,7 @@ const onWindowFocus = () => fetchActiveLive();
 // shows up without the teacher having to switch windows.
 let livePoll = null;
 const startLivePoll = () => {
-  if (!isTeacherRole || livePoll) return;
+  if (!watchesLive || livePoll) return;
   livePoll = setInterval(fetchActiveLive, 20000);
 };
 const stopLivePoll = () => {
@@ -484,7 +487,9 @@ const handleJoinClass = async () => {
               :scheduleLabel="scheduleLabelByCourse[course.id] || ''"
               :loading="startingCourseId === course.id"
               :liveNow="!!activeLiveByCourse[course.id]"
+              :canStartLive="!isStudentRole"
               @start-live="handleStartLive"
+              @join-live="() => openLiveTab(activeLiveByCourse[course.id])"
               @view-details="navigateToDetails"
               @edit-course="openEditModal"
               @delete-course="confirmDeleteCourse"

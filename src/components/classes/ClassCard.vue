@@ -42,6 +42,11 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Students can't start a class — they get "Join Class" while it's live.
+  canStartLive: {
+    type: Boolean,
+    default: true
+  },
   // Start request in flight — disables the button so a double click can't
   // start two sessions.
   loading: {
@@ -50,7 +55,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['start-live', 'view-details', 'more-options', 'edit-course', 'delete-course']);
+const emit = defineEmits(['start-live', 'join-live', 'view-details', 'more-options', 'edit-course', 'delete-course']);
 
 const previewStudents = computed(() => props.students.slice(0, 2));
 
@@ -216,8 +221,19 @@ onBeforeUnmount(() => {
 
       <!-- Live Action Button -->
       <!-- Already live: just a status label, nothing to click. -->
+      <button
+        v-if="isLive && !canStartLive && liveNow"
+        @click.stop="emit('join-live', courseId)"
+        class="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer"
+      >
+        <span class="relative flex w-2 h-2 shrink-0">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-white opacity-75 animate-ping"></span>
+          <span class="relative inline-flex w-2 h-2 rounded-full bg-white"></span>
+        </span>
+        <span>Join Class</span>
+      </button>
       <span
-        v-if="isLive && liveNow"
+        v-else-if="isLive && canStartLive && liveNow"
         @click.stop
         title="This class is live right now"
         class="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 font-bold text-xs shrink-0 whitespace-nowrap select-none"
@@ -229,7 +245,7 @@ onBeforeUnmount(() => {
         <span>Live now</span>
       </span>
       <button
-        v-else-if="isLive"
+        v-else-if="isLive && canStartLive"
         @click.stop="emit('start-live', courseId, title)"
         :disabled="loading"
         class="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm transition active:scale-95 shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-60 disabled:cursor-wait"
