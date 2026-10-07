@@ -27,7 +27,7 @@ const notice = ref('')
 const showAdd = ref(false)
 const saving = ref(false)
 const addError = ref('')
-const form = reactive({ label: '', app_id: '', app_certificate: '', free_minutes: 10000 })
+const form = reactive({ label: '', email: '', app_id: '', app_certificate: '', free_minutes: 10000 })
 
 const errMsg = (e, fallback) => e.response?.data?.error || fallback
 const loadAccounts = async () => {
@@ -82,7 +82,7 @@ const removeAcc = async (a) => {
 }
 
 const openAdd = () => {
-  Object.assign(form, { label: '', app_id: '', app_certificate: '', free_minutes: 10000 })
+  Object.assign(form, { label: '', email: '', app_id: '', app_certificate: '', free_minutes: 10000 })
   addError.value = ''
   showAdd.value = true
 }
@@ -192,6 +192,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
                     <p class="font-bold text-slate-900 dark:text-white truncate">{{ a.label }}</p>
+                    <p v-if="a.email" class="text-[11px] text-slate-500 dark:text-slate-400 truncate" :title="a.email">{{ a.email }}</p>
                     <p class="text-[11px] text-slate-400 flex items-center gap-1"><KeyRound class="w-3 h-3" /> {{ maskId(a.app_id) }}</p>
                   </div>
                   <span v-if="a.is_active" class="shrink-0 px-2 py-0.5 rounded-full bg-[#006A3A] text-white text-[10px] font-bold uppercase tracking-wide">{{ t('Active') }}</span>
@@ -349,6 +350,10 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
             <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Copy the App ID and App Certificate from your project in the Agora console. The certificate is stored encrypted and is never shown again.') }}</p>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Name') }}
               <input v-model="form.label" required maxlength="60" placeholder="Account 2"
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Agora account email') }}
+              <input v-model="form.email" type="email" required autocomplete="off" placeholder="name@example.com"
                 class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
             </label>
             <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">App ID

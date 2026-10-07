@@ -98,6 +98,7 @@ export default {
   "A class that is already running stays on the account it started with, so students and the teacher never end up in different rooms.": "ថ្នាក់ដែលកំពុងដំណើរការនៅតែប្រើគណនីដែលវាចាប់ផ្តើម ដូច្នេះសិស្ស និងគ្រូនឹងមិនស្ថិតក្នុងបន្ទប់ផ្សេងគ្នាទេ។",
   "Account added. Press \"Use this account\" when you want new classes to switch to it.": "បានបន្ថែមគណនី។ ចុច «ប្រើគណនីនេះ» ពេលចង់ឱ្យថ្នាក់ថ្មីប្តូរមកប្រើវា។",
   "Copy the App ID and App Certificate from your project in the Agora console. The certificate is stored encrypted and is never shown again.": "ចម្លង App ID និង App Certificate ពីគម្រោងរបស់អ្នកក្នុង Agora console។ វិញ្ញាបនបត្រត្រូវបានរក្សាទុកដោយអ៊ិនគ្រីប ហើយនឹងមិនបង្ហាញម្តងទៀតទេ។",
+  "Agora account email": "អ៊ីមែលគណនី Agora",
   "Programs": "កម្មវិធីសិក្សា",
   "Olympiad Mathematics": "គណិតវិទ្យាអូឡាំពិក",
   "Olympiad Physics": "រូបវិទ្យាអូឡាំពិក",
