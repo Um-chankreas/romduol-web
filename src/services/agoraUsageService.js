@@ -26,6 +26,11 @@ export const agoraUsageService = {
         const res = await api.put(`/admin/agora-accounts/${encodeURIComponent(id)}`, body)
         return res.data.data.accounts
     },
+    // Sync with the Agora console: the minutes it shows as used this month.
+    async setUsedMinutes(id, usedMinutes) {
+        const res = await api.post(`/admin/agora-accounts/${encodeURIComponent(id)}/usage`, { used_minutes: usedMinutes })
+        return res.data.data.accounts
+    },
     async activateAccount(id) {
         const res = await api.post(`/admin/agora-accounts/${encodeURIComponent(id)}/activate`)
         return res.data.data.accounts

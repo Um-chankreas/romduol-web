@@ -25,6 +25,10 @@ const viewing = ref('')            // account whose usage is shown ('' = the act
 const switching = ref('')
 const notice = ref('')
 const showAdd = ref(false)
+const syncing = ref(null)           // account whose console minutes are being entered
+const syncValue = ref(0)
+const syncSaving = ref(false)
+const syncError = ref('')
 const editingId = ref('')          // '' = adding, otherwise the account being edited
 const saving = ref(false)
 const addError = ref('')
@@ -79,6 +83,26 @@ const removeAcc = async (a) => {
     if (viewing.value === a.id) { viewing.value = ''; await load() }
   } catch (e) {
     error.value = errMsg(e, 'Could not remove account.')
+  }
+}
+
+const openSync = (a) => {
+  syncing.value = a
+  syncValue.value = a.used_minutes
+  syncError.value = ''
+}
+const saveSync = async () => {
+  syncSaving.value = true
+  syncError.value = ''
+  try {
+    accounts.value = await agoraUsageService.setUsedMinutes(syncing.value.id, Number(syncValue.value))
+    notice.value = `${t('Usage updated for')} "${syncing.value.label}".`
+    syncing.value = null
+    await load()
+  } catch (e) {
+    syncError.value = errMsg(e, 'Could not update usage.')
+  } finally {
+    syncSaving.value = false
   }
 }
 
@@ -229,6 +253,9 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                   <button type="button" @click="view(a)"
                     class="text-xs font-bold text-slate-600 dark:text-slate-300 hover:underline cursor-pointer">{{ t('View usage') }}</button>
                   <template v-if="isSuperAdmin">
+                    <button type="button" @click="openSync(a)"
+                      class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                      <RefreshCw class="w-3.5 h-3.5" /> {{ t('Update usage') }}</button>
                     <button v-if="!a.is_active" type="button" @click="switchTo(a)" :disabled="switching === a.id"
                       class="ml-auto px-3 py-1.5 rounded-lg bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
                       {{ switching === a.id ? t('Switching…') : t('Use this account') }}
@@ -271,7 +298,7 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                 <div :class="['h-full rounded-full transition-all', tone]" :style="{ width: barWidth }" />
               </div>
               <div class="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <span>{{ data.percent_used }}% {{ t('used') }}</span>
+                <span>{{ data.percent_used }}% {{ t('used') }}<template v-if="data.adjustment_minutes"> · {{ fmt(data.adjustment_minutes) }} {{ t('min synced from Agora') }}</template></span>
                 <span v-if="data.is_current_month" :class="willExceed ? 'text-red-600 font-bold' : ''">
                   <TrendingUp class="inline w-3.5 h-3.5 -mt-0.5" />
                   {{ t('On pace for') }} {{ fmt(data.projected_minutes) }} {{ t('min this month') }}
@@ -362,6 +389,31 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
           </div>
         </main>
         <Footer />
+
+        <!-- Update usage from the Agora console -->
+        <div v-if="syncing" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" @click.self="!syncSaving && (syncing = null)">
+          <form class="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-6 space-y-4" @submit.prevent="saveSync">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-extrabold text-slate-900 dark:text-white">{{ t('Update usage') }} · {{ syncing.label }}</h3>
+              <button type="button" @click="syncing = null" class="p-1 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Close"><X class="w-4 h-4" /></button>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('Minutes were only counted here after tracking began. Enter what the Agora console shows as used this month (Usage → RTC monthly minutes) and this page will match it, then keep counting on top.') }}</p>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">{{ t('Minutes used this month (from Agora)') }}
+              <input v-model.number="syncValue" type="number" min="0" step="1" required autofocus
+                class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+            </label>
+            <p v-if="syncing.adjustment_minutes" class="text-[11px] text-slate-400">{{ t('Currently includes') }} {{ fmt(syncing.adjustment_minutes) }} {{ t('min added manually.') }}</p>
+            <p v-if="syncError" class="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" /> {{ syncError }}
+            </p>
+            <div class="flex justify-end gap-2 pt-1">
+              <button type="button" @click="syncing = null" :disabled="syncSaving"
+                class="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">{{ t('Cancel') }}</button>
+              <button type="submit" :disabled="syncSaving"
+                class="px-5 py-2 rounded-xl bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">{{ syncSaving ? t('Saving…') : t('Save') }}</button>
+            </div>
+          </form>
+        </div>
 
         <!-- Add account -->
         <div v-if="showAdd" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-[2px]" @click.self="!saving && (showAdd = false)">
