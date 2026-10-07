@@ -551,26 +551,45 @@
         </button>
       </template>
 
-      <!-- Student: audience — raise hand and/or open voice -->
+      <!-- Student: audience — microphone, camera and raise-hand buttons -->
       <template v-else-if="!isTeacher">
+        <!-- Microphone: joins the discussion with your voice -->
+        <button
+          @click="startSpeaking({ mic: true, camera: false })"
+          :disabled="handBusy || !classActive"
+          title="Turn on microphone and speak"
+          class="relative p-2.5 md:p-3.5 rounded-full bg-slate-700 text-slate-100 hover:bg-slate-600 transition-all duration-200 shadow-md cursor-pointer disabled:opacity-40"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+          </svg>
+          <span class="pointer-events-none absolute left-1/2 top-1/2 h-[2px] w-6 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded bg-slate-300"></span>
+        </button>
+
+        <!-- Camera: joins with your voice and video -->
+        <button
+          @click="startSpeaking({ mic: true, camera: true })"
+          :disabled="handBusy || !classActive"
+          title="Turn on camera and microphone"
+          class="relative p-2.5 md:p-3.5 rounded-full bg-slate-700 text-slate-100 hover:bg-slate-600 transition-all duration-200 shadow-md cursor-pointer disabled:opacity-40"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <span class="pointer-events-none absolute left-1/2 top-1/2 h-[2px] w-6 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded bg-slate-300"></span>
+        </button>
+
+        <!-- Raise hand: a silent signal to the teacher -->
         <button
           @click="toggleHand"
           :disabled="handBusy || !classActive"
           :title="handStatus === 'raised' ? 'Lower your hand' : 'Raise your hand'"
           :class="[
             'p-2.5 md:p-3.5 rounded-full transition-all duration-200 shadow-md cursor-pointer disabled:opacity-40',
-            handStatus === 'raised' ? 'bg-amber-500 text-slate-950 hover:bg-amber-600' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+            handStatus === 'raised' ? 'bg-amber-500 text-slate-950 hover:bg-amber-600 ring-2 ring-amber-300/60' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
           ]"
         >
           <span class="text-base md:text-lg leading-none">✋</span>
-        </button>
-        <button
-          @click="startSpeaking"
-          :disabled="handBusy || !classActive"
-          class="px-3.5 md:px-5 py-2.5 md:py-3 rounded-full bg-[#016a36] hover:bg-[#015a2d] text-white font-semibold text-xs md:text-sm transition shadow-md cursor-pointer disabled:opacity-40 flex items-center space-x-1.5"
-        >
-          <span class="text-base leading-none">🎤</span>
-          <span>Speak</span>
         </button>
       </template>
       <span v-if="!isTeacher && handStatus === 'raised'" class="hidden sm:inline text-[10px] md:text-xs text-amber-400 font-semibold">
@@ -1909,13 +1928,24 @@ const toggleHand = async () => {
 };
 
 // Student: open your voice immediately — no teacher approval.
-const startSpeaking = async () => {
+// `mic` / `camera` choose what starts on: the microphone button speaks with
+// audio only, the camera button with audio + video. Either can be toggled
+// afterwards from the full control bar.
+const startSpeaking = async ({ mic = true, camera = true } = {}) => {
   if (handBusy.value) return;
   handBusy.value = true;
   try {
     await liveClassService.speak(targetClassId.value);
     handStatus.value = 'speaking';
     await upgradeToCoHost();
+    if (!camera && localVideoTrack) {
+      videoEnabled.value = false;
+      await localVideoTrack.setEnabled(false);
+    }
+    if (!mic && localAudioTrack) {
+      audioEnabled.value = false;
+      await localAudioTrack.setEnabled(false);
+    }
   } catch (err) {
     if (!(await abortSpeaking(err))) showActionError(err, 'Could not open your microphone. Try again.');
   } finally {
