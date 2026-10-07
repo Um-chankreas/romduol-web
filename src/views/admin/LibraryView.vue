@@ -66,7 +66,7 @@ const subjectOptions = computed(() => {
   items.value.forEach(b => b.subject_slug && seen.set(b.subject_slug, b.subject_en || b.subject_slug))
   return [...seen].map(([slug, en]) => ({ slug, en })).sort((a, b) => a.en.localeCompare(b.en))
 })
-const subjectLabel = computed(() => subjectOptions.value.find(s => s.slug === filterSubject.value)?.en || 'All')
+const subjectLabel = computed(() => subjectOptions.value.find(s => s.slug === filterSubject.value)?.en || t('All'))
 const matchesGrade = (b, g) => (kind.value === 'formula'
   ? b.grade_from != null && g >= b.grade_from && g <= b.grade_to
   : b.grade === g)
@@ -78,7 +78,7 @@ const toggleGrade = (g) => {
 }
 const gradeLabel = computed(() => {
   const g = filterGrades.value
-  return !g.length ? 'All' : g.length <= 3 ? g.join(', ') : `${g.length} selected`
+  return !g.length ? t('All') : g.length <= 3 ? g.join(', ') : `${g.length} selected`
 })
 const pickSubject = (s) => { filterSubject.value = s; openMenu.value = '' }
 const toggleMenu = (m) => { openMenu.value = openMenu.value === m ? '' : m }
@@ -397,23 +397,23 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
         <!-- Title + action -->
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0">
-            <h2 class="text-2xl font-extrabold leading-tight text-slate-900 dark:text-white">Book catalog</h2>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Add a PDF and it's on students' phones instantly.</p>
+            <h2 class="text-2xl font-extrabold leading-tight text-slate-900 dark:text-white">{{ t('Book catalog') }}</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t("Add a PDF and it's on students' phones instantly.") }}</p>
           </div>
           <button type="button" @click="openAdd" :disabled="options && !options.configured"
             class="inline-flex items-center gap-2 bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-40 text-white text-sm font-bold py-2.5 px-5 rounded-xl shadow-sm transition cursor-pointer">
-            <Plus class="w-4 h-4" /> Add {{ addLabel }}
+            <Plus class="w-4 h-4" /> {{ t('Add') }} {{ t(addLabel) }}
           </button>
         </div>
 
         <!-- Stats -->
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div v-for="c in [
-            { label: 'Textbooks', value: textbooks.length, icon: BookOpen },
-            { label: 'Past papers', value: pastPapers.length, icon: ScrollText },
-            { label: 'Formulas', value: formulas.length, icon: Calculator },
-            { label: 'Grades', value: gradesCovered, icon: Layers },
-            { label: 'Storage used', value: size([textbooks, pastPapers, formulas].reduce((n, list) => n + list.reduce((m, b) => m + (b.file_size || 0), 0), 0)), icon: HardDrive },
+            { label: t('Textbooks'), value: textbooks.length, icon: BookOpen },
+            { label: t('Past papers'), value: pastPapers.length, icon: ScrollText },
+            { label: t('Formulas'), value: formulas.length, icon: Calculator },
+            { label: t('Grades'), value: gradesCovered, icon: Layers },
+            { label: t('Storage used'), value: size([textbooks, pastPapers, formulas].reduce((n, list) => n + list.reduce((m, b) => m + (b.file_size || 0), 0), 0)), icon: HardDrive },
           ]" :key="c.label"
             class="flex items-center justify-between rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-5 py-4">
             <div>
@@ -443,12 +443,12 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
           <!-- Tabs · search · filters on one row -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 dark:border-slate-800">
             <div class="flex items-center gap-1">
-              <button v-for="t in [{ k: 'textbook', l: 'Textbooks', n: textbooks.length }, { k: 'past-paper', l: 'Past papers', n: pastPapers.length }, { k: 'formula', l: 'Formulas', n: formulas.length }]"
-                :key="t.k" type="button" @click="kind = t.k"
+              <button v-for="tab in [{ k: 'textbook', l: t('Textbooks'), n: textbooks.length }, { k: 'past-paper', l: t('Past papers'), n: pastPapers.length }, { k: 'formula', l: t('Formulas'), n: formulas.length }]"
+                :key="tab.k" type="button" @click="kind = tab.k"
                 :class="['px-3 py-3 text-sm font-bold border-b-2 -mb-px transition cursor-pointer',
-                  kind === t.k ? 'border-[#006A3A] text-[#006A3A] dark:text-emerald-400 dark:border-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200']">
-                {{ t.l }}
-                <span :class="['ml-1.5 px-1.5 py-0.5 rounded-full text-[11px]', kind === t.k ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500']"><template v-if="!initialLoading">{{ t.n }}</template><template v-else>&nbsp;&nbsp;</template></span>
+                  kind === tab.k ? 'border-[#006A3A] text-[#006A3A] dark:text-emerald-400 dark:border-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200']">
+                {{ tab.l }}
+                <span :class="['ml-1.5 px-1.5 py-0.5 rounded-full text-[11px]', kind === tab.k ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500']"><template v-if="!initialLoading">{{ tab.n }}</template><template v-else>&nbsp;&nbsp;</template></span>
               </button>
             </div>
 
@@ -458,7 +458,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                 <button type="button" @click="toggleMenu('grade')"
                   :class="['inline-flex items-center gap-2 rounded-xl border bg-white dark:bg-slate-900 px-3 py-2 text-xs transition cursor-pointer',
                     openMenu === 'grade' || filterGrades.length ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300']">
-                  <span class="text-slate-500 dark:text-slate-400">Grade</span>
+                  <span class="text-slate-500 dark:text-slate-400">{{ t('Grade') }}</span>
                   <b class="text-slate-900 dark:text-white">{{ gradeLabel }}</b>
                   <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
                 </button>
@@ -485,7 +485,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                 <button type="button" @click="toggleMenu('subject')"
                   :class="['inline-flex items-center gap-2 rounded-xl border bg-white dark:bg-slate-900 px-3 py-2 text-xs transition cursor-pointer',
                     openMenu === 'subject' || filterSubject ? 'border-[#006A3A] ring-2 ring-[#006A3A]/15' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300']">
-                  <span class="text-slate-500 dark:text-slate-400">Subject</span>
+                  <span class="text-slate-500 dark:text-slate-400">{{ t('Subject') }}</span>
                   <b class="text-slate-900 dark:text-white">{{ subjectLabel }}</b>
                   <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
                 </button>
@@ -507,9 +507,9 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                 class="text-xs font-bold text-[#006A3A] dark:text-emerald-400 underline cursor-pointer">Clear</button>
               <div class="relative w-56">
                 <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input v-model="search" type="search" placeholder="Search all books" :class="[inputCls, 'pl-9 !py-2']" />
+                <input v-model="search" type="search" :placeholder="t('Search all books')" :class="[inputCls, 'pl-9 !py-2']" />
               </div>
-              <span class="text-xs font-semibold text-slate-400 whitespace-nowrap">{{ filteredItems.length }}<template v-if="filteredItems.length !== items.length"> of {{ items.length }}</template> {{ unitLabel }}</span>
+              <span class="text-xs font-semibold text-slate-400 whitespace-nowrap">{{ filteredItems.length }}<template v-if="filteredItems.length !== items.length"> {{ t('of') }} {{ items.length }}</template> {{ t(unitLabel) }}</span>
             </div>
           </div>
 
