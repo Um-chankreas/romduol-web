@@ -4,11 +4,14 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { authService } from '../../services/authService'; // Path to your authService
 import { useTheme } from '../../composables/useTheme';
+import { useLanguage } from '../../composables/useLanguage';
+import rsTextLogo from '../../assets/logo/rs_text_logo.png';
 import BaseInput from '../../components/ui/BaseInput.vue';
 import BaseButton from '../../components/ui/BaseButton.vue';
 
 const router = useRouter();
 const { isDark, toggleTheme } = useTheme();
+const { lang, setLang } = useLanguage();
 
 const email = ref('');
 const password = ref('');
@@ -40,6 +43,23 @@ const handleSubmit = async () => {
 
 <template>
   <div class="min-h-screen w-full flex flex-col bg-[#F1FCF0] dark:bg-slate-950 transition-colors duration-200">
+    <!-- Header -->
+    <header class="w-full px-6 sm:px-8 py-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+      <img :src="rsTextLogo" alt="Romduol Scholars" class="h-10 w-auto object-contain" />
+      <div class="flex items-center gap-3.5">
+        <div class="inline-flex rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 p-0.5" role="group" aria-label="Language">
+          <button v-for="l in [{ c: 'en', l: 'EN' }, { c: 'km', l: 'ខ្មែរ' }]" :key="l.c" type="button" @click="setLang(l.c)"
+            :aria-pressed="lang === l.c"
+            :class="['px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer',
+              lang === l.c ? 'bg-[#006A3A] text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white']">{{ l.l }}</button>
+        </div>
+        <button @click="toggleTheme" type="button" title="Toggle Theme"
+          class="p-2 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition shadow-xs cursor-pointer">
+          <span class="text-base leading-none block">{{ isDark ? '☀️' : '🌙' }}</span>
+        </button>
+      </div>
+    </header>
+
     <div class="flex-1 w-full flex flex-col items-center justify-center p-6">
     <!-- Theme Switcher -->
     <button 
