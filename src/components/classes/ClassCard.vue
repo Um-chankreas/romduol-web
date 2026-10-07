@@ -42,6 +42,11 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Edit/delete menu — hidden for students, who only view classes.
+  canManage: {
+    type: Boolean,
+    default: true
+  },
   // Students can't start a class — they get "Join Class" while it's live.
   canStartLive: {
     type: Boolean,
@@ -109,7 +114,7 @@ onBeforeUnmount(() => {
     <div class="absolute top-0 right-0 w-24 sm:w-28 h-24 sm:h-28 bg-[#e8f3ec] dark:bg-slate-800/50 rounded-bl-full pointer-events-none"></div>
 
     <!-- More Options Button -->
-    <div class="class-card-menu absolute top-4 right-4 z-20" @click.stop>
+    <div v-if="canManage" class="class-card-menu absolute top-4 right-4 z-20" @click.stop>
       <button
         @click="toggleMenu"
         class="text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition p-1.5 rounded-full cursor-pointer"

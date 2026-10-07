@@ -488,6 +488,7 @@ const handleJoinClass = async () => {
               :loading="startingCourseId === course.id"
               :liveNow="!!activeLiveByCourse[course.id]"
               :canStartLive="!isStudentRole"
+              :canManage="!isStudentRole"
               @start-live="handleStartLive"
               @join-live="() => openLiveTab(activeLiveByCourse[course.id])"
               @view-details="navigateToDetails"
