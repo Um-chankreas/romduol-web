@@ -10,6 +10,7 @@
       </div>
 
       <button
+        v-if="canManage"
         @click="$router.push({ name: 'CreateQuiz', params: { courseId: activeCourseId }, query: { lessonId: lessonId } })"
         class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
       >
@@ -28,6 +29,7 @@
         </div>
 
         <button 
+          v-if="canManage"
           @click="$router.push({ name: 'CreateQuiz', params: { courseId: activeCourseId }, query: { lessonId: lessonId } })"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition cursor-pointer active:scale-95"
         >
@@ -45,7 +47,7 @@
                 <th class="p-3">Questions</th>
                 <th class="p-3">Passing Grade</th>
                 <th class="p-3">Status</th>
-                <th class="p-3 text-right">Actions</th>
+                <th v-if="canManage" class="p-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
@@ -75,7 +77,7 @@
                     {{ q.status || 'draft' }}
                   </span>
                 </td>
-                <td class="p-3 text-right space-x-3">
+                <td v-if="canManage" class="p-3 text-right space-x-3">
                   <button 
                     @click="$router.push(`/course/${activeCourseId}/quiz/edit/${q.id}`)"
                     class="text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
@@ -102,6 +104,10 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { quizService } from '@/services/quizService'
+import { authService } from '@/services/authService'
+
+// Students can see the quizzes but not author them.
+const canManage = authService.getCurrentUser()?.role !== 'student'
 
 const props = defineProps({
   courseId: {

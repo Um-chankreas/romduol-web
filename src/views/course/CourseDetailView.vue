@@ -13,6 +13,9 @@ import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
 import ClassScheduleCard from '@/components/classes/ClassScheduleCard.vue'
 import CourseStudentsProgress from '@/components/insights/CourseStudentsProgress.vue'
 import { authService } from '@/services/authService'
+
+// Students read the course; authoring controls are for teachers/admins.
+const canManage = authService.getCurrentUser()?.role !== 'student'
 import { courseService } from '@/services/courseService'
 import { lessonService } from '@/services/lessonService'
 import { unitService } from '@/services/unitService'
@@ -575,7 +578,7 @@ onMounted(() => {
                 </div>
 
                 <!-- Actions -->
-                <div class="flex items-center gap-2 shrink-0">
+                <div v-if="canManage" class="flex items-center gap-2 shrink-0">
                   <button
                     @click="openCustomizeModal"
                     title="Customize"
@@ -613,7 +616,7 @@ onMounted(() => {
                   Active Term
                 </span>
               </div>
-              <div class="flex items-center gap-2.5">
+              <div v-if="canManage" class="flex items-center gap-2.5">
                 <button
                   @click="openUploadModal"
                   class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-95"
@@ -677,9 +680,10 @@ onMounted(() => {
                       No lessons yet
                     </h3>
                     <p class="text-xs text-slate-600 dark:text-slate-400 mt-1 mb-4">
-                      Upload your first lesson to get started
+                      {{ canManage ? 'Upload your first lesson to get started' : 'Lessons will appear here once your teacher adds them' }}
                     </p>
                     <button 
+                      v-if="canManage"
                       @click="openUploadModal"
                       class="px-5 py-2.5 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 transition shadow-sm cursor-pointer active:scale-95"
                     >
@@ -716,7 +720,7 @@ onMounted(() => {
                           </div>
                         </div>
 
-                        <div class="flex items-center gap-1">
+                        <div v-if="canManage" class="flex items-center gap-1">
                           <button
                             @click="openEditLessonModal(lesson)"
                             class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition cursor-pointer"
@@ -891,6 +895,7 @@ onMounted(() => {
                       </span>
                       <div class="flex items-center gap-3 text-xs font-bold">
                         <button
+                          v-if="canManage"
                           type="button"
                           class="text-[#006A3A] dark:text-emerald-400 hover:underline"
                           @click="goToEditAssignment(a.id)"
@@ -898,7 +903,7 @@ onMounted(() => {
                           Edit
                         </button>
                         <button
-                          v-if="a.type === 'quiz'"
+                          v-if="canManage && a.type === 'quiz'"
                           type="button"
                           class="text-[#006A3A] dark:text-emerald-400 hover:underline"
                           @click="openRoster(a.id)"
