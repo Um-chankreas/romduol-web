@@ -204,8 +204,16 @@
             v-else
             class="w-full h-full bg-slate-950 rounded-xl md:rounded-2xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-sm"
           >
-            <div class="w-8 h-8 border-4 border-slate-700 border-t-slate-400 rounded-full animate-spin mb-3"></div>
-            Waiting for the teacher's stream…
+            <!-- Teacher is in the room but sending no camera/mic/screen yet (e.g. no devices, or not sharing) -->
+            <template v-if="teacherInRoom">
+              <Avatar :name="teacherInRoom.name || 'Teacher'" :src="teacherInRoom.avatar_url || ''" size="xl" />
+              <p class="mt-4 text-slate-300 font-semibold">{{ teacherInRoom.name || 'The teacher' }} <span class="text-amber-400 font-bold">• Teacher</span></p>
+              <p class="mt-1 text-slate-500 text-xs max-w-xs text-center">The teacher is in the class but hasn't turned on a camera, microphone or screen share yet. You'll see and hear them as soon as they do.</p>
+            </template>
+            <template v-else>
+              <div class="w-8 h-8 border-4 border-slate-700 border-t-slate-400 rounded-full animate-spin mb-3"></div>
+              Waiting for the teacher to join…
+            </template>
           </div>
         </div>
 
@@ -709,6 +717,8 @@ const updateClock = () => {
 // Participants panel, not a tile. Keys: 'local' or an Agora uid; null = nobody yet.
 const uidOf = (p) => p.agora_uid ?? generateAgoraUid(p.user_id);
 const teacherUids = computed(() => new Set(participants.value.filter(p => p.role === 'teacher').map(uidOf)));
+// The teacher's row from the participants list, even when they publish nothing to Agora.
+const teacherInRoom = computed(() => participants.value.find(p => p.role === 'teacher') || null);
 const localHasVideo = computed(() => canPublish.value && (isScreenSharing.value || videoEnabled.value));
 
 const mainKey = computed(() => {
