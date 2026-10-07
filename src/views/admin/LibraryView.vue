@@ -9,9 +9,12 @@ import Footer from '../../components/layout/Footer.vue'
 import Skeleton from '../../components/ui/Skeleton.vue'
 import CoverCropper from '../../components/ui/CoverCropper.vue'
 import { libraryService } from '@/services/libraryService'
+import { authService } from '@/services/authService'
 
 defineOptions({ name: 'LibraryView' })
 
+// Students and teachers can browse the shelf; managing it is admin-only.
+const canManage = ['admin', 'super_admin'].includes(authService.getCurrentUser()?.role)
 const options = ref(null)
 const kind = ref('textbook')
 const form = reactive({
@@ -160,10 +163,12 @@ const refresh = async () => {
 
 onMounted(async () => {
   document.addEventListener('click', closeMenus)
-  try {
-    options.value = await libraryService.getOptions()
-  } catch {
-    error.value = 'Could not load the form options. Are you signed in as an admin?'
+  if (canManage) {
+    try {
+      options.value = await libraryService.getOptions()
+    } catch {
+      error.value = 'Could not load the form options. Are you signed in as an admin?'
+    }
   }
   refresh()
 })
@@ -400,20 +405,20 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
             <h2 class="text-2xl font-extrabold leading-tight text-slate-900 dark:text-white">{{ t('Book catalog') }}</h2>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ t("Add a PDF and it's on students' phones instantly.") }}</p>
           </div>
-          <button type="button" @click="openAdd" :disabled="options && !options.configured"
+          <button v-if="canManage" type="button" @click="openAdd" :disabled="options && !options.configured"
             class="inline-flex items-center gap-2 bg-[#006A3A] hover:bg-[#005A31] disabled:opacity-40 text-white text-sm font-bold py-2.5 px-5 rounded-xl shadow-sm transition cursor-pointer">
             <Plus class="w-4 h-4" /> {{ t('Add') }} {{ t(addLabel) }}
           </button>
         </div>
 
         <!-- Stats -->
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div :class="['grid grid-cols-2 gap-4', canManage ? 'lg:grid-cols-5' : 'lg:grid-cols-4']">
           <div v-for="c in [
             { label: t('Textbooks'), value: textbooks.length, icon: BookOpen },
             { label: t('Past papers'), value: pastPapers.length, icon: ScrollText },
             { label: t('Formulas'), value: formulas.length, icon: Calculator },
             { label: t('Grades'), value: gradesCovered, icon: Layers },
-            { label: t('Storage used'), value: size([textbooks, pastPapers, formulas].reduce((n, list) => n + list.reduce((m, b) => m + (b.file_size || 0), 0), 0)), icon: HardDrive },
+            ...(canManage ? [{ label: t('Storage used'), value: size([textbooks, pastPapers, formulas].reduce((n, list) => n + list.reduce((m, b) => m + (b.file_size || 0), 0), 0)), icon: HardDrive }] : []),
           ]" :key="c.label"
             class="flex items-center justify-between rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-5 py-4">
             <div>
@@ -425,7 +430,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
           </div>
         </div>
 
-        <div v-if="options && !options.configured"
+        <div v-if="canManage && options && !options.configured"
           class="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
           Textbook storage isn't configured on the server (TEXTBOOK_* in .env), so adding files is disabled.
         </div>
@@ -499,7 +504,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
             </div>
 
             <div class="ml-auto flex flex-wrap items-center gap-2 py-2">
-              <button v-if="selected.size" type="button" @click="removeSelected"
+              <button v-if="canManage && selected.size" type="button" @click="removeSelected"
                 class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 cursor-pointer">
                 <Trash2 class="w-3.5 h-3.5" /> Delete {{ selected.size }} selected
               </button>
@@ -566,14 +571,14 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
                     <div class="absolute inset-0 bg-slate-900/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition flex items-center justify-center gap-2">
                       <a :href="b.file_url" target="_blank" rel="noopener" title="Open"
                         class="w-8 h-8 rounded-full bg-white text-[#006A3A] flex items-center justify-center hover:scale-110 transition"><ExternalLink class="w-4 h-4" /></a>
-                      <button type="button" title="Edit" @click="startEdit(b)"
+                      <button v-if="canManage" type="button" title="Edit" @click="startEdit(b)"
                         class="w-8 h-8 rounded-full bg-[#ffce04] text-[#3d3000] flex items-center justify-center hover:scale-110 transition cursor-pointer"><Pencil class="w-4 h-4" /></button>
-                      <button type="button" title="Delete" @click="removeItem(b)"
+                      <button v-if="canManage" type="button" title="Delete" @click="removeItem(b)"
                         class="w-8 h-8 rounded-full bg-white text-red-600 flex items-center justify-center hover:scale-110 transition cursor-pointer"><Trash2 class="w-4 h-4" /></button>
                     </div>
 
                     <!-- Select -->
-                    <label :class="['absolute top-3 right-2 w-6 h-6 rounded-md bg-white/90 flex items-center justify-center cursor-pointer transition',
+                    <label v-if="canManage" :class="['absolute top-3 right-2 w-6 h-6 rounded-md bg-white/90 flex items-center justify-center cursor-pointer transition',
                         selected.has(b.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100']">
                       <input type="checkbox" :checked="selected.has(b.id)" @change="toggleRow(b.id)" class="accent-[#006A3A] w-4 h-4 cursor-pointer" />
                     </label>
@@ -591,7 +596,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
             <div v-if="!initialLoading && !shelfItems.length" class="py-16 text-center">
               <Library class="w-10 h-10 mx-auto text-slate-300 mb-2" />
               <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">{{ items.length ? 'No matches' : 'Nothing on this shelf yet' }}</p>
-              <button v-if="!items.length" type="button" @click="openAdd" class="mt-2 text-sm font-bold text-[#006A3A] dark:text-emerald-400 underline cursor-pointer">Add the first one</button>
+              <button v-if="canManage && !items.length" type="button" @click="openAdd" class="mt-2 text-sm font-bold text-[#006A3A] dark:text-emerald-400 underline cursor-pointer">Add the first one</button>
             </div>
           </div>
         </section>
@@ -603,7 +608,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
 
     <!-- Add / edit drawer (slides in from the right) -->
     <Transition name="drawer">
-    <div v-if="showForm" class="drawer-root fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-[2px]" @click.self="!busy && closeForm()">
+    <div v-if="canManage && showForm" class="drawer-root fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-[2px]" @click.self="!busy && closeForm()">
       <div class="drawer-panel relative w-full max-w-md h-full flex flex-col bg-white dark:bg-slate-900 shadow-2xl">
         <CoverCropper v-if="cropFile" :file="cropFile" @done="onCropped" @cancel="cropFile = null" />
         <div :class="['px-6 py-4 flex items-center justify-between border-b', editing ? 'bg-[#ffce04]/20 border-[#ffce04]/40' : 'bg-emerald-50 dark:bg-emerald-900/10 border-slate-100 dark:border-slate-800']">

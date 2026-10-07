@@ -158,7 +158,7 @@ const topItems = computed(() => [
   { to: '/', label: 'My Classes', icon: Users, show: true, active: isMyClassesActive.value },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays, show: permissions.value.schedule, active: route.path === '/schedule' },
   { to: '/students', label: 'Student Management', icon: GraduationCap, show: isAdmin.value, active: route.path === '/students' },
-  { to: '/library', label: 'Library', icon: Library, show: isAdmin.value, active: route.path === '/library' },
+  { to: '/library', label: 'Library', icon: Library, show: true, active: route.path === '/library' },
 ].filter(i => i.show))
 
 const toolItems = computed(() => [

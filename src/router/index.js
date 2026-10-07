@@ -57,7 +57,8 @@ const routes = [
         path: '/library',
         name: 'Library',
         component: () => import('@/views/admin/LibraryView.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'super_admin'] }
+        // Everyone signed in can browse; add/edit/delete controls are admin-only (page + API)
+        meta: { requiresAuth: true }
     },
     {
         path: '/roles',
