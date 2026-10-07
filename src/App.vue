@@ -14,5 +14,5 @@
 // re-fetching and flashing a loading state. CourseDetailView gets a separate
 // cache entry per course id (keyed by route.fullPath), so `max` caps total
 // cached instances and evicts the least-recently-used one once exceeded.
-const keepAliveViews = ['ClassesView', 'DashboardView', 'CourseDetailView'];
+const keepAliveViews = ['ClassesView', 'DashboardView', 'CourseDetailView', 'LibraryView'];
 </script>

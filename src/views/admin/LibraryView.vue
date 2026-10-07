@@ -1,7 +1,7 @@
 <script setup>
 import { useLanguage } from '@/composables/useLanguage'
 const { t } = useLanguage()
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, nextTick, watch } from 'vue'
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, Pencil, Trash2, Search, BookOpen, ScrollText, ExternalLink, X, Plus, Library, Layers, HardDrive, ChevronDown, Calculator } from 'lucide-vue-next'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import Header from '../../components/layout/Header.vue'
@@ -122,6 +122,24 @@ const toggleRow = (id) => {
 // Only what's on screen can stay selected — otherwise "Delete N selected"
 // would also delete books ticked in a folder or search you've since left.
 onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
+
+// Kept alive (see App.vue): coming back from the reader keeps the tab, filters
+// and scroll position instead of reloading. Covers/links can be presigned and
+// lapse, so the shelf is refreshed quietly on return.
+const scrollEl = ref(null)
+let savedScroll = 0
+let activatedOnce = false
+onDeactivated(() => {
+  savedScroll = scrollEl.value?.scrollTop || 0
+  document.removeEventListener('click', closeMenus)
+})
+onActivated(async () => {
+  document.addEventListener('click', closeMenus)
+  if (!activatedOnce) { activatedOnce = true; return }
+  refresh()
+  await nextTick()
+  if (scrollEl.value) scrollEl.value.scrollTop = savedScroll
+})
 watch([kind, search, filterGrades, filterSubject], () => { selected.value = new Set() })
 
 const removeSelected = async () => {
@@ -396,7 +414,7 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
       </Header>
 
       <!-- only this area scrolls; sidebar + header stay put -->
-      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
+      <div ref="scrollEl" class="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <main class="p-4 sm:p-8 flex-1 w-full space-y-6">
 
         <!-- Title + action -->
