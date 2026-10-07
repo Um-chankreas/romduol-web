@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ZoomIn, ZoomOut, ChevronUp, ChevronDown, Loader2, AlertCircle } from 'lucide-vue-next'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import rsTextLogo from '@/assets/logo/rs_text_logo.png'
 import { libraryService } from '@/services/libraryService'
 import { useLanguage } from '@/composables/useLanguage'
 
@@ -94,6 +95,7 @@ const goTo = (n) => {
 }
 
 const onKey = (e) => {
+  if (e.target?.tagName === 'INPUT') return
   if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(current.value + 1)
   else if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(current.value - 1)
 }
@@ -101,6 +103,15 @@ const onKey = (e) => {
 const block = (e) => e.preventDefault()
 const onKeyBlock = (e) => {
   if ((e.ctrlKey || e.metaKey) && ['s', 'p'].includes(e.key.toLowerCase())) e.preventDefault()
+}
+
+// "Go to page": type a number and press Enter (or leave the box) to jump there.
+const pageInput = ref('1')
+watch(current, (n) => { pageInput.value = String(n) })
+const jump = () => {
+  const n = parseInt(pageInput.value, 10)
+  if (Number.isFinite(n)) goTo(n)
+  else pageInput.value = String(current.value)
 }
 
 const back = () => (window.history.length > 1 ? router.back() : router.push('/library'))
@@ -150,12 +161,17 @@ const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
         class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
         <ArrowLeft class="w-4 h-4" /> {{ t('Back') }}
       </button>
+      <img :src="rsTextLogo" alt="Romduol Scholars" class="hidden sm:block h-8 w-auto object-contain shrink-0" />
+      <span class="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-700" />
       <h1 class="flex-1 min-w-0 truncate text-sm sm:text-base font-bold text-slate-900 dark:text-white">{{ title }}</h1>
 
       <div v-if="numPages" class="flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
         <button type="button" @click="goTo(current - 1)" :disabled="current <= 1" aria-label="Previous page"
           class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"><ChevronUp class="w-4 h-4" /></button>
-        <span class="tabular-nums px-1">{{ current }} / {{ numPages }}</span>
+        <input v-model="pageInput" @keydown.enter.prevent="jump" @blur="jump" @focus="$event.target.select()"
+          inputmode="numeric" aria-label="Go to page" title="Go to page"
+          class="w-12 text-center tabular-nums rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#006A3A]" />
+        <span class="tabular-nums px-1 text-slate-500">/ {{ numPages }}</span>
         <button type="button" @click="goTo(current + 1)" :disabled="current >= numPages" aria-label="Next page"
           class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"><ChevronDown class="w-4 h-4" /></button>
         <span class="mx-2 h-5 w-px bg-slate-200 dark:bg-slate-700" />
