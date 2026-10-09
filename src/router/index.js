@@ -20,6 +20,21 @@ const routes = [
         meta: { requiresAuth: true } // Protected route
     },
     {
+        // Student learning pages (same data as the mobile app's Home / Class tabs).
+        path: '/home',
+        name: 'StudentHome',
+        component: () => import('@/views/student/StudentHomeView.vue'),
+        meta: { requiresAuth: true, roles: ['student'] }
+    },
+    {
+        // Subjects list + the selected chapter's step path. An optional course id
+        // (from the Home page) opens that course at its current chapter.
+        path: '/class/:courseId?',
+        name: 'StudentClass',
+        component: () => import('@/views/student/StudentClassView.vue'),
+        meta: { requiresAuth: true, roles: ['student'] }
+    },
+    {
         path: '/dashboard',
         name: 'Dashboard',
         component: DashboardView,
@@ -186,6 +201,11 @@ router.beforeEach(async (to, from, next) => {
     if (to.meta.requiresGuest && loggedIn) {
         // Redirect authenticated user trying to access /login back to /
         next('/')
+        return
+    }
+    if (loggedIn && to.path === '/' && authService.getCurrentUser()?.role === 'student') {
+        // Students start on their own Home; the "/" class manager is for staff.
+        next('/home')
         return
     }
     if (to.meta.roles && loggedIn) {

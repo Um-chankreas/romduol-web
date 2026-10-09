@@ -28,7 +28,8 @@
       <nav class="space-y-1">
         <router-link v-for="item in topItems" :key="item.to" :to="item.to" :class="navClass(item.active)">
           <component :is="item.icon" :class="iconClass(item.active)" />
-          <span class="truncate">{{ t(item.label) }}</span>
+          <span class="truncate flex-1">{{ t(item.label) }}</span>
+          <span v-if="item.badge" class="inline-flex items-center gap-1 rounded-full bg-red-600 text-white text-[10px] font-extrabold px-2 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-white" />{{ item.badge }}</span>
         </router-link>
 
         <!-- Roles & Permissions group: the parent only gets a tint when one of
@@ -96,19 +97,21 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Clapperboard,
-  CalendarDays, Folder, Settings, ChevronDown, Library, Activity,
+  CalendarDays, Folder, Settings, ChevronDown, Library, House, BookOpen, Activity,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useLanguage } from '../../composables/useLanguage'
 import { authService } from '../../services/authService'
 import { permissionsService } from '../../services/permissionsService'
+import { liveClassService } from '../../services/liveClassService'
 
 const route = useRoute()
 const { t } = useLanguage()
 
+const isStudent = computed(() => authService.getCurrentUser()?.role === 'student')
 const isAdmin = computed(() => ['admin', 'super_admin'].includes(authService.getCurrentUser()?.role))
 
 // Per-user overrides on top of role defaults (an admin can grant/revoke each
@@ -116,9 +119,20 @@ const isAdmin = computed(() => ['admin', 'super_admin'].includes(authService.get
 // gated item is hidden until the real map loads, rather than flashing items
 // that then disappear.
 const permissions = ref({})
+// Students get a red LIVE badge on "Class" while one of their classes is on air.
+const liveCount = ref(0)
+let livePoll = null
+const pollLive = async () => {
+  try { liveCount.value = (await liveClassService.getMyLiveClasses('active')).length } catch { /* badge is optional */ }
+}
 onMounted(async () => {
+  if (authService.getCurrentUser()?.role === 'student') {
+    pollLive()
+    livePoll = setInterval(pollLive, 30000)
+  }
   permissions.value = await permissionsService.getPermissions()
 })
+onBeforeUnmount(() => clearInterval(livePoll))
 
 // The "Roles & Permissions" group expands to reveal its two sub-pages. Starts
 // open when you're already on one of them (so a page refresh there doesn't
@@ -153,7 +167,13 @@ const subClass = (active) => [
     : 'text-white/70 hover:bg-white/10 hover:text-white',
 ]
 
-const topItems = computed(() => [
+const studentItems = computed(() => [
+  { to: '/home', label: 'Home', icon: House, active: route.path === '/home' },
+  { to: '/class', label: 'Class', icon: BookOpen, badge: liveCount.value > 0 ? 'LIVE' : '', active: route.path.startsWith('/class') || route.path.startsWith('/lessons/') || route.path.startsWith('/courses/') },
+  { to: '/library', label: 'Library', icon: Library, active: route.path.startsWith('/library') },
+])
+
+const teacherItems = computed(() => [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: permissions.value.dashboard, active: route.path === '/dashboard' },
   { to: '/', label: 'My Classes', icon: Users, show: true, active: isMyClassesActive.value },
   { to: '/schedule', label: 'Schedule', icon: CalendarDays, show: permissions.value.schedule, active: route.path === '/schedule' },
@@ -161,6 +181,8 @@ const topItems = computed(() => [
   { to: '/agora-usage', label: 'Agora Usage', icon: Activity, show: isAdmin.value, active: route.path === '/agora-usage' },
   { to: '/library', label: 'Library', icon: Library, show: true, active: route.path === '/library' },
 ].filter(i => i.show))
+// Students get their own short menu, like the mobile tabs.
+const topItems = computed(() => (isStudent.value ? studentItems.value : teacherItems.value))
 
 const toolItems = computed(() => [
   { to: '/tools/latex-to-text', label: 'LaTeX to Text', icon: FileText, show: permissions.value.latex_to_text },
