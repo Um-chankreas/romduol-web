@@ -47,6 +47,8 @@ export function connectLiveClassSocket(liveClassId, handlers = {}) {
     socket.emit('live-class:subscribe', { liveClassId }, (ack) => {
       if (!ack?.ok) {
         handlers.onError?.(ack?.error || 'Failed to subscribe to live class')
+        // Not in the room => server may think the teacher is gone. Retry.
+        setTimeout(() => { if (socket.connected) subscribe() }, 3000)
         return
       }
       handlers.onState?.({ role: ack.role, ...ack.state })
@@ -54,6 +56,8 @@ export function connectLiveClassSocket(liveClassId, handlers = {}) {
   }
 
   socket.on('connect', subscribe)
+  // Idempotent keep-alive: re-joins the room if a reconnect/throttled tab lost it.
+  const keepAlive = setInterval(() => { if (socket.connected) subscribe() }, 30000)
   socket.on('connect_error', (err) => handlers.onError?.(err.message))
 
   const forThisClass = (p) => p && p.liveClassId === liveClassId
@@ -86,6 +90,7 @@ export function connectLiveClassSocket(liveClassId, handlers = {}) {
       try {
         socket.emit('live-class:unsubscribe', { liveClassId })
       } catch (_) { /* socket may already be closed */ }
+      clearInterval(keepAlive)
       socket.removeAllListeners()
       socket.disconnect()
     },
