@@ -8,6 +8,7 @@ import Header from '../../components/layout/Header.vue'
 import Footer from '../../components/layout/Footer.vue'
 import Skeleton from '../../components/ui/Skeleton.vue'
 import CoverCropper from '../../components/ui/CoverCropper.vue'
+import TocEditor from '../../components/ui/TocEditor.vue'
 import { libraryService } from '@/services/libraryService'
 import { authService } from '@/services/authService'
 
@@ -791,6 +792,15 @@ const labelCls = 'block text-[11px] font-bold uppercase tracking-wider text-slat
               </div>
               <input ref="coverInputRef" type="file" accept="image/*" class="hidden" @change="pickCover" />
             </div>
+          </div>
+
+          <!-- Table of contents (textbooks being edited) -->
+          <div v-if="editing && kind === 'textbook'">
+            <p class="flex items-center gap-2 mb-2 text-sm font-bold text-slate-900 dark:text-white">
+              <span class="w-6 h-6 rounded-full bg-[#006A3A] text-white text-xs flex items-center justify-center">5</span>
+              Table of contents <span class="text-xs font-medium text-slate-400">optional</span>
+            </p>
+            <TocEditor :kind="kind" :file-id="editing.id" />
           </div>
 
           <div class="rounded-xl bg-slate-50 dark:bg-slate-800 px-3 py-2 flex flex-wrap items-center gap-x-2 text-xs">

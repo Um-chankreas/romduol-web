@@ -62,6 +62,29 @@ export const libraryService = {
         await api.delete(`/library/${kind}/${encodeURIComponent(id)}/cover`)
     },
 
+    // Table of contents (textbooks): read from a photo of the contents page, edited, then saved.
+    async getToc(kind, id) {
+        const res = await api.get(`/library/${kind}/${encodeURIComponent(id)}/toc`)
+        return res.data.data
+    },
+
+    // files: 1-4 images. Returns a DRAFT list; nothing is saved until saveToc.
+    async extractToc(kind, id, files) {
+        const form = new FormData()
+        files.forEach(f => form.append('images', f))
+        const res = await api.post(`/library/${kind}/${encodeURIComponent(id)}/toc/extract`, form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000,
+        })
+        return res.data.data.items
+    },
+
+    // data: { items: [{ title, page, level }], page_offset }. An empty list removes the table.
+    async saveToc(kind, id, data) {
+        const res = await api.put(`/library/${kind}/${encodeURIComponent(id)}/toc`, data)
+        return res.data.data.items
+    },
+
     async remove(kind, id) {
         const res = await api.delete(`/library/${kind}/${encodeURIComponent(id)}`)
         return res.data.data
