@@ -13,6 +13,8 @@ import Header from '../../components/layout/Header.vue';
 import Footer from '../../components/layout/Footer.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
 import ClassesOverview from '../../components/dashboard/ClassesOverview.vue';
+import LessonLocation from '../../components/dashboard/LessonLocation.vue';
+import ScoreSpread from '../../components/dashboard/ScoreSpread.vue';
 import AttendanceSection from '../../components/dashboard/AttendanceSection.vue';
 import StudentPerformanceTable from '../../components/dashboard/StudentPerformanceTable.vue';
 import StudentProgressOverview from '../../components/insights/StudentProgressOverview.vue';
@@ -291,6 +293,8 @@ const exportReport = async () => {
 
         <ClassesOverview :data="learning" :loading="learningLoading" :error="learningError" @retry="fetchLearning()" />
 
+        <LessonLocation :data="learning" :loading="learningLoading" />
+
         <!-- Growth chart -->
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200/60 dark:border-slate-800 shadow-sm">
           <div class="flex items-center justify-between mb-3">
@@ -315,6 +319,8 @@ const exportReport = async () => {
         />
 
         <AttendanceSection :data="learning" :loading="learningLoading" />
+
+        <ScoreSpread :data="learning" :loading="learningLoading" />
 
         <StudentPerformanceTable :courses="courses" />
 
