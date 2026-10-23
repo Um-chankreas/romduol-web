@@ -12,6 +12,7 @@ import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import Footer from '../../components/layout/Footer.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
+import StudentPerformanceTable from '../../components/dashboard/StudentPerformanceTable.vue';
 import StudentProgressOverview from '../../components/insights/StudentProgressOverview.vue';
 
 defineOptions({ name: 'DashboardView' });
@@ -379,7 +380,7 @@ const exportReport = async () => {
               All students →
             </button>
           </div>
-          <SignupsChart :weeks="analytics?.signups_weekly || []" :dark="isDark" />s
+          <SignupsChart :weeks="analytics?.signups_weekly || []" :dark="isDark" />
         </div>
 
         <!-- Where students are -->
@@ -389,6 +390,8 @@ const exportReport = async () => {
           :error="overviewError"
           @retry="fetchOverview()"
         />
+
+        <StudentPerformanceTable :course-id="filterCourseId" />
 
         <!-- Improved + At-risk -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
