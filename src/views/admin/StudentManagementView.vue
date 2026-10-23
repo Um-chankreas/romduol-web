@@ -243,7 +243,7 @@ const subCourseNames = (s) => {
 const subTooltip = (s) => {
   const list = subSummary(s).active_courses;
   return list.length
-    ? list.map((c) => `${c.title} — until ${formatDate(c.expiry_date)}`).join('\n')
+    ? list.map((c) => (c.expiry_date ? `${c.title} — until ${formatDate(c.expiry_date)}` : `${c.title} — open access`)).join('\n')
     : 'No active course subscriptions — click to manage';
 };
 
