@@ -12,6 +12,7 @@ import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import Footer from '../../components/layout/Footer.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
+import BrandIcon from '../../components/ui/BrandIcon.vue';
 import ClassesOverview from '../../components/dashboard/ClassesOverview.vue';
 import LessonLocation from '../../components/dashboard/LessonLocation.vue';
 import ScoreSpread from '../../components/dashboard/ScoreSpread.vue';
@@ -140,21 +141,21 @@ const cards = computed(() => {
       value: k.total_students ?? '—',
       hint: `${k.new_students_7d ?? 0} new this week`,
       delta: signChange,
-      icon: '🎓',
+      icon: 'class',
     },
     {
       label: 'Active this week',
       value: k.active_students_7d ?? '—',
       hint: activationRate.value != null ? `${activationRate.value}% of students` : 'engagement',
       delta: null,
-      icon: '⚡',
+      icon: 'xp',
     },
     {
       label: 'Live class attendance',
       value: attendanceRate.value != null ? `${attendanceRate.value}%` : '—',
       hint: attendanceRate.value != null ? 'of enrolled students join' : 'no live classes yet',
       delta: null,
-      icon: '🎥',
+      icon: 'live-class',
     },
     {
       label: 'Avg quiz score (30d)',
@@ -162,7 +163,7 @@ const cards = computed(() => {
       hint: 'vs previous 30 days',
       delta: scoreDelta.value,
       deltaUnit: 'pts',
-      icon: '🎯',
+      icon: 'daily-challenge',
     },
   ];
 });
@@ -269,7 +270,7 @@ const exportReport = async () => {
           >
             <div class="flex items-center justify-between">
               <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{{ c.label }}</span>
-              <span class="text-base">{{ c.icon }}</span>
+              <BrandIcon :name="c.icon" :set="isDark ? 'darkmode-line' : 'line-light'" :size="30" />
             </div>
             <p class="text-3xl font-extrabold text-slate-900 dark:text-white mt-2">
               {{ analyticsLoading ? '—' : c.value }}
