@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { insightsService } from '../../services/insightsService.js'
 
@@ -7,7 +7,10 @@ import { insightsService } from '../../services/insightsService.js'
 // server-side search / status filter / sorting / paging. The class filter comes
 // from the dashboard's filter bar.
 const props = defineProps({
+  // Class chosen in the dashboard's filter bar (the table starts from it, and
+  // follows it when it changes) and the classes available to pick from.
   courseId: { type: String, default: '' },
+  courses: { type: Array, default: () => [] },
 })
 
 const router = useRouter()
@@ -18,8 +21,8 @@ const pagination = ref({ page: 1, limit: PAGE_SIZE, total: 0, total_pages: 1 })
 const statusCounts = ref({})
 const loading = ref(false)
 const error = ref('')
-const exporting = ref(false)
 
+const classId = ref(props.courseId || '')
 const search = ref('')
 const status = ref('')
 const sort = ref('progress')
@@ -45,8 +48,44 @@ const COLUMNS = [
   { key: 'status', label: 'Status', cls: 'min-w-[110px]' },
 ]
 
+// Date filter = when the student was last active (UTC days). "Any time" keeps
+// everyone, including students who have never been active.
+const DATE_PRESETS = [
+  { key: 'any', label: 'Any time' },
+  { key: '7', label: '7d' },
+  { key: '30', label: '30d' },
+  { key: '90', label: '90d' },
+  { key: 'custom', label: 'Custom' },
+]
+const datePreset = ref('any')
+const customFrom = ref('')
+const customTo = ref('')
+const todayYmd = () => new Date().toISOString().slice(0, 10)
+const daysAgoYmd = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
+const activeRange = computed(() => {
+  if (datePreset.value === 'any') return { activeFrom: null, activeTo: null }
+  if (datePreset.value === 'custom') {
+    const ok = customFrom.value && customTo.value && customFrom.value > customTo.value
+    return ok ? { activeFrom: null, activeTo: null } : { activeFrom: customFrom.value || null, activeTo: customTo.value || null }
+  }
+  return { activeFrom: daysAgoYmd(Number(datePreset.value) - 1), activeTo: todayYmd() }
+})
+const customInvalid = computed(() => datePreset.value === 'custom' && customFrom.value && customTo.value && customFrom.value > customTo.value)
+const pickPreset = (key) => {
+  datePreset.value = key
+  if (key === 'custom') {
+    if (!customTo.value) customTo.value = todayYmd()
+    if (!customFrom.value) customFrom.value = daysAgoYmd(29)
+  }
+}
+const filtersActive = computed(() => !!(status.value || search.value.trim() || datePreset.value !== 'any' || classId.value))
+const resetFilters = () => {
+  status.value = ''; search.value = ''; datePreset.value = 'any'; customFrom.value = ''; customTo.value = ''; classId.value = props.courseId || ''
+}
+
 const filters = computed(() => ({
-  courseId: props.courseId || null,
+  courseId: classId.value || null,
+  ...activeRange.value,
   status: status.value || null,
   q: search.value.trim() || null,
   sort: sort.value,
@@ -84,7 +123,8 @@ watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => { page.value = 1; load() }, 300)
 })
-watch(() => [props.courseId, status.value], () => { page.value = 1; load() })
+watch(() => props.courseId, (id) => { classId.value = id || '' })
+watch(() => [classId.value, status.value, activeRange.value.activeFrom, activeRange.value.activeTo], () => { page.value = 1; load() })
 watch([sort, dir, page], () => load())
 onBeforeUnmount(() => { clearTimeout(searchTimer); controller?.abort() })
 
@@ -113,18 +153,60 @@ const pageButtons = computed(() => {
   return Array.from({ length: Math.min(5, n) }, (_, i) => start + i)
 })
 
-const exportTable = async () => {
+// ── Export dialog ────────────────────────────────────────────────────────
+const FORMATS = [
+  { key: 'xlsx', label: 'Excel', ext: '.xlsx' },
+  { key: 'csv', label: 'CSV', ext: '.csv' },
+  { key: 'pdf', label: 'PDF', ext: '.pdf' },
+]
+const showExport = ref(false)
+const exportClass = ref('')
+const exportFormat = ref('xlsx')
+const exportContacts = ref(false)
+const exporting = ref(false)
+const exportError = ref('')
+
+const openExport = () => {
+  exportClass.value = classId.value
+  exportError.value = ''
+  showExport.value = true
+}
+const closeExport = () => { if (!exporting.value) showExport.value = false }
+const exportClassName = computed(() => props.courses.find(c => c.id === exportClass.value)?.title || '')
+const exportWhat = computed(() => {
+  const all = !exportClass.value
+  if (exportFormat.value === 'xlsx') return all ? `One workbook: an “All classes” sheet, then a sheet for each class (${props.courses.length}).` : `One workbook with a single sheet for “${exportClassName.value}”.`
+  if (exportFormat.value === 'csv') return all ? `A .zip with “All classes.csv” plus one CSV for each class (${props.courses.length}).` : `One CSV file for “${exportClassName.value}”.`
+  return all ? 'One PDF: an “All classes” section, then a section for each class.' : `One PDF for “${exportClassName.value}”.`
+})
+const appliedFilterText = computed(() => {
+  const parts = []
+  if (status.value) parts.push(STATUS_META[status.value].label)
+  if (search.value.trim()) parts.push(`search “${search.value.trim()}”`)
+  const { activeFrom, activeTo } = activeRange.value
+  if (activeFrom || activeTo) parts.push(`last active ${activeFrom || '…'} → ${activeTo || '…'}`)
+  return parts.join(' · ')
+})
+const runExport = async () => {
   exporting.value = true
+  exportError.value = ''
   try {
-    await insightsService.downloadStudentsTable({ ...filters.value, page: null, limit: null })
+    await insightsService.downloadStudentsTable(
+      { ...filters.value, courseId: exportClass.value || null, page: null, limit: null },
+      { format: exportFormat.value, includeContacts: exportContacts.value },
+    )
+    showExport.value = false
   } catch (err) {
     let msg = err.message || 'Failed to export.'
     try { msg = JSON.parse(await err.response.data.text()).error || msg } catch { /* keep msg */ }
-    error.value = msg
+    exportError.value = msg
   } finally {
     exporting.value = false
   }
 }
+const onKeydown = (e) => { if (e.key === 'Escape' && showExport.value) closeExport() }
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 load()
 defineExpose({ reload: () => load({ fresh: true }) })
@@ -152,14 +234,53 @@ defineExpose({ reload: () => load({ fresh: true }) })
         </label>
         <button
           type="button"
-          @click="exportTable"
-          :disabled="exporting || !pagination.total"
-          class="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#006A3A] text-white font-bold text-xs hover:bg-[#005A31] transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          @click="openExport"
+          class="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#006A3A] text-white font-bold text-xs hover:bg-[#005A31] transition cursor-pointer"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>
-          {{ exporting ? 'Preparing…' : 'Export table to Excel' }}
+          Export…
         </button>
       </div>
+    </div>
+
+    <!-- Class + last-active date filters -->
+    <div class="flex flex-wrap items-end gap-4">
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">CLASS</span>
+        <select
+          v-model="classId"
+          class="h-9 min-w-[200px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
+        >
+          <option value="">All classes ({{ courses.length }})</option>
+          <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.title }}</option>
+        </select>
+      </label>
+      <div class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">LAST ACTIVE</span>
+        <div class="flex p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800" role="group" aria-label="Last active date range">
+          <button
+            v-for="p in DATE_PRESETS"
+            :key="p.key"
+            type="button"
+            @click="pickPreset(p.key)"
+            :aria-pressed="datePreset === p.key"
+            class="h-8 px-3 rounded-lg text-xs font-bold cursor-pointer transition"
+            :class="datePreset === p.key ? 'bg-white dark:bg-slate-700 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-300'"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+      <div v-if="datePreset === 'custom'" class="flex items-end gap-2">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">FROM</span>
+          <input v-model="customFrom" type="date" :max="customTo || todayYmd()" class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100" />
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">TO</span>
+          <input v-model="customTo" type="date" :min="customFrom" :max="todayYmd()" class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100" />
+        </label>
+        <span v-if="customInvalid" class="pb-2 text-xs font-semibold text-red-500">“From” must be before “To”</span>
+      </div>
+      <button v-if="filtersActive" type="button" @click="resetFilters" class="h-9 text-xs font-bold text-[#006A3A] dark:text-emerald-400 cursor-pointer">Reset filters</button>
     </div>
 
     <!-- Status filter -->
@@ -259,6 +380,66 @@ defineExpose({ reload: () => load({ fresh: true }) })
           :class="n === pagination.page ? 'bg-[#006A3A] text-white' : 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'"
         >{{ n }}</button>
         <button type="button" aria-label="Next page" :disabled="pagination.page >= pagination.total_pages" @click="page = pagination.page + 1" class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+      </div>
+    </div>
+
+    <!-- Export dialog -->
+    <div v-if="showExport" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50" @click.self="closeExport">
+      <div role="dialog" aria-modal="true" aria-labelledby="export-title" class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 id="export-title" class="text-lg font-extrabold text-slate-900 dark:text-white">Export student table</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose which class to export and the file type.</p>
+          </div>
+          <button type="button" aria-label="Close" @click="closeExport" class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">×</button>
+        </div>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">WHICH CLASS</span>
+          <select v-model="exportClass" class="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <option value="">All classes ({{ courses.length }})</option>
+            <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.title }}</option>
+          </select>
+        </label>
+
+        <div class="flex flex-col gap-1.5">
+          <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">FILE TYPE</span>
+          <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="File type">
+            <button
+              v-for="f in FORMATS"
+              :key="f.key"
+              type="button"
+              role="radio"
+              :aria-checked="exportFormat === f.key"
+              @click="exportFormat = f.key"
+              class="h-14 rounded-xl border-2 text-left px-3 cursor-pointer transition"
+              :class="exportFormat === f.key ? 'border-[#006A3A] bg-emerald-50 dark:bg-emerald-500/10' : 'border-slate-200 dark:border-slate-700'"
+            >
+              <span class="block text-sm font-extrabold text-slate-900 dark:text-white">{{ f.label }}</span>
+              <span class="block text-[11px] text-slate-500 dark:text-slate-400">{{ f.ext }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-700 dark:text-slate-200 space-y-1.5">
+          <p><b>You will get:</b> {{ exportWhat }}</p>
+          <p v-if="appliedFilterText"><b>Filters applied:</b> {{ appliedFilterText }}</p>
+          <p v-else class="text-slate-500 dark:text-slate-400">No search, status or date filters applied — every student is included.</p>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+          <input v-model="exportContacts" type="checkbox" class="w-4 h-4 accent-[#006A3A]" />
+          Include email and phone <span class="text-slate-500 dark:text-slate-400 font-normal">(personal data)</span>
+        </label>
+
+        <div v-if="exportError" class="p-3 rounded-xl bg-red-500/10 text-red-500 text-xs">{{ exportError }}</div>
+
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" @click="closeExport" :disabled="exporting" class="h-10 px-5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 cursor-pointer">Cancel</button>
+          <button type="button" @click="runExport" :disabled="exporting" class="h-10 px-5 rounded-xl bg-[#006A3A] text-white text-sm font-bold hover:bg-[#005A31] cursor-pointer disabled:opacity-60 disabled:cursor-wait">
+            {{ exporting ? 'Preparing…' : `Download ${FORMATS.find(f => f.key === exportFormat).label}` }}
+          </button>
+        </div>
       </div>
     </div>
   </section>

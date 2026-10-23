@@ -5,7 +5,7 @@ import api from './axios'
 // Teachers only see students enrolled in their own courses (and only those
 // courses' data); admins see everything.
 
-const tableParams = ({ courseId, status, q, sort, dir, page, limit, fresh } = {}) => ({
+const tableParams = ({ courseId, status, q, sort, dir, page, limit, fresh, activeFrom, activeTo } = {}) => ({
   ...(courseId ? { course_id: courseId } : {}),
   ...(status ? { status } : {}),
   ...(q ? { q } : {}),
@@ -14,6 +14,8 @@ const tableParams = ({ courseId, status, q, sort, dir, page, limit, fresh } = {}
   ...(page ? { page } : {}),
   ...(limit ? { limit } : {}),
   ...(fresh ? { fresh: 1 } : {}),
+  ...(activeFrom ? { active_from: activeFrom } : {}),
+  ...(activeTo ? { active_to: activeTo } : {}),
 })
 
 export const insightsService = {
@@ -31,16 +33,19 @@ export const insightsService = {
     return res.data?.data || res.data || {}
   },
 
-  // Same filters, every matching row, as an .xlsx download.
-  async downloadStudentsTable(filters = {}, { includeContacts = false } = {}) {
+  // Every row matching the filters as a file. format: 'xlsx' | 'csv' | 'pdf'.
+  // courseId empty = ALL classes: Excel gets an "All classes" sheet plus one per
+  // class, CSV comes as a .zip with one file per class, PDF has a section per class.
+  async downloadStudentsTable(filters = {}, { format = 'xlsx', includeContacts = false } = {}) {
     const res = await api.get('/insights/students-table/export', {
-      params: { ...tableParams(filters), page: undefined, limit: undefined, ...(includeContacts ? { include_contacts: 1 } : {}) },
+      params: { ...tableParams({ ...filters, page: null, limit: null, sort: null, dir: null }), format, ...(includeContacts ? { include_contacts: 1 } : {}) },
       responseType: 'blob',
     })
+    const ext = format === 'csv' && !filters.courseId ? 'zip' : format
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = `romduol-students_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.download = `romduol-students_${new Date().toISOString().slice(0, 10)}.${ext}`
     document.body.appendChild(a)
     a.click()
     a.remove()

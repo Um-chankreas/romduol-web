@@ -391,7 +391,7 @@ const exportReport = async () => {
           @retry="fetchOverview()"
         />
 
-        <StudentPerformanceTable :course-id="filterCourseId" />
+        <StudentPerformanceTable :course-id="filterCourseId" :courses="courses" />
 
         <!-- Improved + At-risk -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
