@@ -13,13 +13,13 @@ import api from './axios'
 //   at_risk: [{ student_id, name, avatar_url, reason, last_active, days_inactive, recent_avg, delta }]
 //   at_risk_total, generated_at
 
-const toParams = ({ days, courseId } = {}) => ({
-  ...(days ? { days } : {}),
+const toParams = ({ days, from, to, courseId } = {}) => ({
+  ...(from && to ? { from, to } : days ? { days } : {}),
   ...(courseId ? { course_id: courseId } : {}),
 })
 
 export const analyticsService = {
-  // filters: { days: 7|30|90, courseId } — both optional.
+  // filters: { days: 7|30|90 } or { from, to } ('YYYY-MM-DD'), plus optional courseId.
   async getDashboard(filters = {}) {
     const res = await api.get('/admin/analytics', { params: toParams(filters) })
     return res.data?.data || res.data || {}

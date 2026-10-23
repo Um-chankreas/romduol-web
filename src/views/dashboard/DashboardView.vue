@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 
 import { authService } from '../../services/authService.js';
 import { courseService } from '../../services/courseService.js';
-import { lessonService } from '../../services/lessonService.js';
 import { analyticsService } from '../../services/analyticsService.js';
 import { insightsService } from '../../services/insightsService.js';
 import { useTheme } from '../../composables/useTheme.js';
@@ -12,7 +11,6 @@ import { useTheme } from '../../composables/useTheme.js';
 import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import Footer from '../../components/layout/Footer.vue';
-import CreateClassModal from '../../components/modals/CreateClassModal.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
 import StudentProgressOverview from '../../components/insights/StudentProgressOverview.vue';
 
@@ -34,11 +32,33 @@ const analyticsError = ref('');
 
 // Filters — they drive every analytics number below and the Excel export.
 const RANGE_OPTIONS = [7, 30, 90];
-const filterDays = ref(30);
+const filterDays = ref(30);          // 7 | 30 | 90, or 0 when a custom range is picked
+const filterFrom = ref('');          // 'YYYY-MM-DD'
+const filterTo = ref('');
 const filterCourseId = ref('');
-const filters = computed(() => ({ days: filterDays.value, courseId: filterCourseId.value || null }));
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+const isCustom = computed(() => filterDays.value === 0);
+const customReady = computed(() => isCustom.value && !!filterFrom.value && !!filterTo.value && filterFrom.value <= filterTo.value);
+const customInvalid = computed(() => isCustom.value && !!filterFrom.value && !!filterTo.value && filterFrom.value > filterTo.value);
+// Days covered by the current range — drives the KPI labels.
+const rangeLength = computed(() => {
+  if (!isCustom.value) return filterDays.value;
+  if (!customReady.value) return 0;
+  return Math.round((new Date(filterTo.value) - new Date(filterFrom.value)) / 86400000) + 1;
+});
+const rangeText = computed(() => (isCustom.value ? `${filterFrom.value || '…'} → ${filterTo.value || '…'}` : `Last ${filterDays.value} days`));
+const pickCustom = () => {
+  filterDays.value = 0;
+  if (!filterTo.value) filterTo.value = todayYmd();
+  if (!filterFrom.value) filterFrom.value = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+};
+// While a custom range is half-filled, keep showing the last good data.
+const filters = computed(() => ({
+  ...(isCustom.value ? (customReady.value ? { from: filterFrom.value, to: filterTo.value } : { days: 30 }) : { days: filterDays.value }),
+  courseId: filterCourseId.value || null,
+}));
 const filterCourseName = computed(() => courses.value.find(c => c.id === filterCourseId.value)?.title || '');
-const resetFilters = () => { filterDays.value = 30; filterCourseId.value = ''; };
+const resetFilters = () => { filterDays.value = 30; filterFrom.value = ''; filterTo.value = ''; filterCourseId.value = ''; };
 const filtersActive = computed(() => filterDays.value !== 30 || !!filterCourseId.value);
 
 const fetchAnalytics = async ({ silent = false } = {}) => {
@@ -131,12 +151,12 @@ const cards = computed(() => {
     {
       label: 'Total students',
       value: k.total_students ?? '—',
-      hint: `${k.new_students_7d ?? 0} new in last ${filterDays.value} days`,
+      hint: `${k.new_students_7d ?? 0} new in last ${rangeLength.value} days`,
       delta: signChange,
       icon: '🎓',
     },
     {
-      label: `Active (${filterDays.value}d)`,
+      label: `Active (${rangeLength.value}d)`,
       value: k.active_students_7d ?? '—',
       hint: activationRate.value != null ? `${activationRate.value}% of students` : 'engagement',
       delta: null,
@@ -150,9 +170,9 @@ const cards = computed(() => {
       icon: '💳',
     },
     {
-      label: `Avg quiz score (${filterDays.value}d)`,
+      label: `Avg quiz score (${rangeLength.value}d)`,
       value: k.avg_quiz_score_30d != null ? `${k.avg_quiz_score_30d}%` : '—',
-      hint: `vs previous ${filterDays.value} days`,
+      hint: `vs previous ${rangeLength.value} days`,
       delta: scoreDelta.value,
       deltaUnit: 'pts',
       icon: '🎯',
@@ -220,35 +240,6 @@ const exportReport = async () => {
     exporting.value = false;
   }
 };
-
-// ── Create Class ────────────────────────────────────────────────────────
-const showCreateModal = ref(false);
-const creatingCourse = ref(false);
-const createError = ref('');
-
-const openCreateModal = () => { createError.value = ''; showCreateModal.value = true; };
-const closeCreateModal = () => { if (!creatingCourse.value) showCreateModal.value = false; };
-
-const handleCreateCourse = async ({ title, description, category, color, icon, is_free, chapters = [], openAfter = false }) => {
-  try {
-    creatingCourse.value = true;
-    createError.value = '';
-    const response = await courseService.createCourse(title, description, category, color, icon, null, is_free);
-    const newCourse = response.data?.course || response.course || response.data || response;
-    if (newCourse?.id && chapters.length) {
-      for (let i = 0; i < chapters.length; i++) {
-        await lessonService.createLesson(newCourse.id, chapters[i], '', null, i + 1);
-      }
-    }
-    if (newCourse) courses.value.unshift(newCourse);
-    showCreateModal.value = false;
-    if (openAfter && newCourse?.id) router.push(`/courses/${newCourse.id}`);
-  } catch (err) {
-    createError.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create class.';
-  } finally {
-    creatingCourse.value = false;
-  }
-};
 </script>
 
 <template>
@@ -277,12 +268,6 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
             >
               {{ exporting ? 'Preparing…' : 'Export report (.xlsx)' }}
             </button>
-            <button
-              @click="openCreateModal"
-              class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
-            >
-              <span class="text-sm font-normal">+</span> Create Class
-            </button>
           </div>
         </div>
 
@@ -300,7 +285,36 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
                 class="h-8 px-4 rounded-lg text-xs font-bold cursor-pointer transition"
                 :class="filterDays === d ? 'bg-white dark:bg-slate-700 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-300'"
               >{{ d }}d</button>
+              <button
+                type="button"
+                @click="pickCustom"
+                :aria-pressed="isCustom"
+                class="h-8 px-4 rounded-lg text-xs font-bold cursor-pointer transition"
+                :class="isCustom ? 'bg-white dark:bg-slate-700 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-300'"
+              >Custom</button>
             </div>
+          </div>
+          <div v-if="isCustom" class="flex items-end gap-2">
+            <label class="flex flex-col gap-1.5">
+              <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">FROM</span>
+              <input
+                v-model="filterFrom"
+                type="date"
+                :max="filterTo || todayYmd()"
+                class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
+              />
+            </label>
+            <label class="flex flex-col gap-1.5">
+              <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">TO</span>
+              <input
+                v-model="filterTo"
+                type="date"
+                :min="filterFrom"
+                :max="todayYmd()"
+                class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
+              />
+            </label>
+            <span v-if="customInvalid" class="pb-2 text-xs font-semibold text-red-500">“From” must be before “To”</span>
           </div>
           <label class="flex flex-col gap-1.5">
             <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">CLASS</span>
@@ -314,7 +328,7 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
           </label>
           <div class="flex items-center gap-2 ml-auto">
             <span v-if="filtersActive" class="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400 text-xs font-bold">
-              Last {{ filterDays }} days{{ filterCourseName ? ` · ${filterCourseName}` : '' }}
+              {{ rangeText }}{{ filterCourseName ? ` · ${filterCourseName}` : '' }}
             </span>
             <button v-if="filtersActive" type="button" @click="resetFilters" class="text-xs font-bold text-[#006A3A] dark:text-emerald-400 cursor-pointer">Reset</button>
           </div>
@@ -483,12 +497,6 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
       </div>
     </div>
 
-    <CreateClassModal
-      v-if="showCreateModal"
-      :creating="creatingCourse"
-      :error="createError"
-      @close="closeCreateModal"
-      @create="handleCreateCourse"
-    />
+
   </div>
 </template>
