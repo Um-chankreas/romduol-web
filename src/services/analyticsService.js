@@ -13,16 +13,22 @@ import api from './axios'
 //   at_risk: [{ student_id, name, avatar_url, reason, last_active, days_inactive, recent_avg, delta }]
 //   at_risk_total, generated_at
 
+const toParams = ({ days, courseId } = {}) => ({
+  ...(days ? { days } : {}),
+  ...(courseId ? { course_id: courseId } : {}),
+})
+
 export const analyticsService = {
-  async getDashboard() {
-    const res = await api.get('/admin/analytics')
+  // filters: { days: 7|30|90, courseId } — both optional.
+  async getDashboard(filters = {}) {
+    const res = await api.get('/admin/analytics', { params: toParams(filters) })
     return res.data?.data || res.data || {}
   },
 
   // Dashboard report as an .xlsx file (data sheets + a Charts sheet with the
   // charts embedded as pictures). Backend: GET /admin/analytics/export.
-  async downloadReport() {
-    const res = await api.get('/admin/analytics/export', { responseType: 'blob' })
+  async downloadReport(filters = {}) {
+    const res = await api.get('/admin/analytics/export', { params: toParams(filters), responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
