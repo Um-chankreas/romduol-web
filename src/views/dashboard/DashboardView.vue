@@ -12,6 +12,8 @@ import Sidebar from '../../components/layout/Sidebar.vue';
 import Header from '../../components/layout/Header.vue';
 import Footer from '../../components/layout/Footer.vue';
 import SignupsChart from '../../components/dashboard/SignupsChart.vue';
+import ClassesOverview from '../../components/dashboard/ClassesOverview.vue';
+import AttendanceSection from '../../components/dashboard/AttendanceSection.vue';
 import StudentPerformanceTable from '../../components/dashboard/StudentPerformanceTable.vue';
 import StudentProgressOverview from '../../components/insights/StudentProgressOverview.vue';
 
@@ -40,6 +42,23 @@ const fetchAnalytics = async ({ silent = false } = {}) => {
     analyticsError.value = err.response?.data?.error || err.message || 'Failed to load analytics.';
   } finally {
     analyticsLoading.value = false;
+  }
+};
+
+// ── Learning overview (classes + live-class attendance) ───────────────
+const learning = ref(null);
+const learningLoading = ref(false);
+const learningError = ref('');
+
+const fetchLearning = async ({ silent = false } = {}) => {
+  if (!silent) learningLoading.value = true;
+  learningError.value = '';
+  try {
+    learning.value = await insightsService.getLearningOverview();
+  } catch (err) {
+    if (!silent) learningError.value = err.response?.data?.error || err.message || 'Failed to load classes.';
+  } finally {
+    learningLoading.value = false;
   }
 };
 
@@ -79,12 +98,14 @@ onActivated(() => {
   fetchCourses({ silent: true });
   fetchAnalytics({ silent: true });
   fetchOverview({ silent: true });
+  fetchLearning({ silent: true });
 });
 
 onMounted(() => {
   fetchCourses();
   fetchAnalytics();
   fetchOverview();
+  fetchLearning();
 });
 
 // ── KPI helpers ─────────────────────────────────────────────────────────
@@ -101,11 +122,7 @@ const activationRate = computed(() => {
   if (!k.active_eligible) return null;
   return Math.round((k.active_students_7d / k.active_eligible) * 100);
 });
-const conversionRate = computed(() => {
-  const k = kpis.value;
-  if (!k.total_students) return null;
-  return Math.round((k.paid_students / k.total_students) * 100);
-});
+const attendanceRate = computed(() => learning.value?.totals?.attendance_rate ?? null);
 const scoreDelta = computed(() => {
   const k = kpis.value;
   if (k.avg_quiz_score_30d == null || k.avg_quiz_score_prev_30d == null) return null;
@@ -131,11 +148,11 @@ const cards = computed(() => {
       icon: '⚡',
     },
     {
-      label: 'Paid subscribers',
-      value: k.paid_students ?? '—',
-      hint: conversionRate.value != null ? `${conversionRate.value}% conversion` : '—',
+      label: 'Live class attendance',
+      value: attendanceRate.value != null ? `${attendanceRate.value}%` : '—',
+      hint: attendanceRate.value != null ? 'of enrolled students join' : 'no live classes yet',
       delta: null,
-      icon: '💳',
+      icon: '🎥',
     },
     {
       label: 'Avg quiz score (30d)',
@@ -272,6 +289,8 @@ const exportReport = async () => {
           </div>
         </div>
 
+        <ClassesOverview :data="learning" :loading="learningLoading" :error="learningError" @retry="fetchLearning()" />
+
         <!-- Growth chart -->
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200/60 dark:border-slate-800 shadow-sm">
           <div class="flex items-center justify-between mb-3">
@@ -294,6 +313,8 @@ const exportReport = async () => {
           :error="overviewError"
           @retry="fetchOverview()"
         />
+
+        <AttendanceSection :data="learning" :loading="learningLoading" />
 
         <StudentPerformanceTable :courses="courses" />
 

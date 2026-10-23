@@ -60,6 +60,21 @@ export const insightsService = {
    *   daily_active: [{ day, students }]  // 30 UTC days, oldest first
    *   top_learners: [{ student_id, name, avatar_url, xp_7d, level }] }
    */
+  /**
+   * Dashboard "how are my classes doing": classes, lesson locations and live-class attendance.
+   * { totals: { classes, classes_with_students, enrolments, students, avg_progress, active_7d, avg_quiz, attendance_rate },
+   *   classes: [{ course, students, lessons, next_live_at, avg_progress, attendance_rate, live_classes_held,
+   *               avg_quiz, inactive, status_counts, flag: { key, label }, finished,
+   *               lesson_distribution: [{ lesson_id, title, index, students_here }] }],
+   *   attendance: [{ course, sessions: [{ live_class_id, title, date, eligible, attended, rate }] }],
+   *   missed: { total, students: [{ student_id, name, avatar_url, course_id, course_title, missed_in_a_row, last_joined }] },
+   *   generated_at }
+   */
+  async getLearningOverview({ fresh = false } = {}) {
+    const res = await api.get('/insights/learning-overview', { params: fresh ? { fresh: 1 } : {} })
+    return res.data?.data || res.data || {}
+  },
+
   async getOverview() {
     const res = await api.get('/insights/overview')
     return res.data?.data || res.data || {}

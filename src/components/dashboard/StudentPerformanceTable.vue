@@ -41,6 +41,7 @@ const STATUS_ORDER = ['on_track', 'behind', 'inactive', 'not_started', 'complete
 const COLUMNS = [
   { key: 'name', label: 'Student', cls: 'min-w-[200px]' },
   { key: 'course', label: 'Class', cls: 'min-w-[150px]' },
+  { key: 'lesson', label: 'Current lesson', cls: 'min-w-[170px]', sortable: false },
   { key: 'progress', label: 'Progress', cls: 'min-w-[170px]' },
   { key: 'avg_quiz', label: 'Avg quiz', cls: 'min-w-[90px]' },
   { key: 'quizzes', label: 'Quizzes', cls: 'min-w-[80px]' },
@@ -141,6 +142,12 @@ const lastActiveText = (r) => {
   if (r.days_inactive === 0) return 'Today'
   if (r.days_inactive === 1) return 'Yesterday'
   return `${r.days_inactive} days ago`
+}
+const lessonText = (r) => {
+  if (r.finished) return 'Finished'
+  if (r.status === 'not_started') return 'Not started'
+  if (r.current_lesson_index == null) return r.progress > 0 ? '—' : 'Not started'
+  return `Ch ${r.current_lesson_index} · ${r.current_lesson_title || ''}`.trim()
 }
 const openStudent = (r) => router.push({ name: 'StudentProfile', params: { id: r.student_id } })
 
@@ -317,7 +324,8 @@ defineExpose({ reload: () => load({ fresh: true }) })
               class="px-4 py-3 text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase whitespace-nowrap"
               :class="c.cls"
             >
-              <button type="button" @click="sortBy(c.key)" class="flex items-center gap-1 uppercase tracking-wider cursor-pointer hover:text-slate-800 dark:hover:text-white">
+              <span v-if="c.sortable === false">{{ c.label }}</span>
+              <button v-else type="button" @click="sortBy(c.key)" class="flex items-center gap-1 uppercase tracking-wider cursor-pointer hover:text-slate-800 dark:hover:text-white">
                 {{ c.label }}
                 <span aria-hidden="true" :class="sort === c.key ? 'text-[#006A3A] dark:text-emerald-400' : 'opacity-30'">{{ sort === c.key && dir === 'asc' ? '▲' : '▼' }}</span>
               </button>
@@ -349,6 +357,7 @@ defineExpose({ reload: () => load({ fresh: true }) })
               </div>
             </td>
             <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ r.course_title || '—' }}</td>
+            <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ lessonText(r) }}</td>
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <div class="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-[#006A3A]" :style="{ width: r.progress + '%' }"></div></div>
