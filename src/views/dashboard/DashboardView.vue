@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onActivated, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { authService } from '../../services/authService.js';
@@ -31,42 +31,11 @@ const analytics = ref(null);
 const analyticsLoading = ref(false);
 const analyticsError = ref('');
 
-// Filters — they drive every analytics number below and the Excel export.
-const RANGE_OPTIONS = [7, 30, 90];
-const filterDays = ref(30);          // 7 | 30 | 90, or 0 when a custom range is picked
-const filterFrom = ref('');          // 'YYYY-MM-DD'
-const filterTo = ref('');
-const filterCourseId = ref('');
-const todayYmd = () => new Date().toISOString().slice(0, 10);
-const isCustom = computed(() => filterDays.value === 0);
-const customReady = computed(() => isCustom.value && !!filterFrom.value && !!filterTo.value && filterFrom.value <= filterTo.value);
-const customInvalid = computed(() => isCustom.value && !!filterFrom.value && !!filterTo.value && filterFrom.value > filterTo.value);
-// Days covered by the current range — drives the KPI labels.
-const rangeLength = computed(() => {
-  if (!isCustom.value) return filterDays.value;
-  if (!customReady.value) return 0;
-  return Math.round((new Date(filterTo.value) - new Date(filterFrom.value)) / 86400000) + 1;
-});
-const rangeText = computed(() => (isCustom.value ? `${filterFrom.value || '…'} → ${filterTo.value || '…'}` : `Last ${filterDays.value} days`));
-const pickCustom = () => {
-  filterDays.value = 0;
-  if (!filterTo.value) filterTo.value = todayYmd();
-  if (!filterFrom.value) filterFrom.value = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-};
-// While a custom range is half-filled, keep showing the last good data.
-const filters = computed(() => ({
-  ...(isCustom.value ? (customReady.value ? { from: filterFrom.value, to: filterTo.value } : { days: 30 }) : { days: filterDays.value }),
-  courseId: filterCourseId.value || null,
-}));
-const filterCourseName = computed(() => courses.value.find(c => c.id === filterCourseId.value)?.title || '');
-const resetFilters = () => { filterDays.value = 30; filterFrom.value = ''; filterTo.value = ''; filterCourseId.value = ''; };
-const filtersActive = computed(() => filterDays.value !== 30 || !!filterCourseId.value);
-
 const fetchAnalytics = async ({ silent = false } = {}) => {
   if (!silent) analyticsLoading.value = true;
   analyticsError.value = '';
   try {
-    analytics.value = await analyticsService.getDashboard(filters.value);
+    analytics.value = await analyticsService.getDashboard();
   } catch (err) {
     analyticsError.value = err.response?.data?.error || err.message || 'Failed to load analytics.';
   } finally {
@@ -118,8 +87,6 @@ onMounted(() => {
   fetchOverview();
 });
 
-watch(filters, () => fetchAnalytics({ silent: true }));
-
 // ── KPI helpers ─────────────────────────────────────────────────────────
 const kpis = computed(() => analytics.value?.kpis || {});
 
@@ -152,12 +119,12 @@ const cards = computed(() => {
     {
       label: 'Total students',
       value: k.total_students ?? '—',
-      hint: `${k.new_students_7d ?? 0} new in last ${rangeLength.value} days`,
+      hint: `${k.new_students_7d ?? 0} new this week`,
       delta: signChange,
       icon: '🎓',
     },
     {
-      label: `Active (${rangeLength.value}d)`,
+      label: 'Active this week',
       value: k.active_students_7d ?? '—',
       hint: activationRate.value != null ? `${activationRate.value}% of students` : 'engagement',
       delta: null,
@@ -171,9 +138,9 @@ const cards = computed(() => {
       icon: '💳',
     },
     {
-      label: `Avg quiz score (${rangeLength.value}d)`,
+      label: 'Avg quiz score (30d)',
       value: k.avg_quiz_score_30d != null ? `${k.avg_quiz_score_30d}%` : '—',
-      hint: `vs previous ${rangeLength.value} days`,
+      hint: 'vs previous 30 days',
       delta: scoreDelta.value,
       deltaUnit: 'pts',
       icon: '🎯',
@@ -231,7 +198,7 @@ const exportReport = async () => {
   exporting.value = true;
   analyticsError.value = '';
   try {
-    await analyticsService.downloadReport(filters.value);
+    await analyticsService.downloadReport();
   } catch (err) {
     // A failed blob download comes back as a Blob, so the JSON error body needs reading.
     let msg = err.message || 'Failed to export report.';
@@ -269,69 +236,6 @@ const exportReport = async () => {
             >
               {{ exporting ? 'Preparing…' : 'Export report (.xlsx)' }}
             </button>
-          </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="flex flex-wrap items-end gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-          <div class="flex flex-col gap-1.5">
-            <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">DATE RANGE</span>
-            <div class="flex p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800" role="group" aria-label="Date range">
-              <button
-                v-for="d in RANGE_OPTIONS"
-                :key="d"
-                type="button"
-                @click="filterDays = d"
-                :aria-pressed="filterDays === d"
-                class="h-8 px-4 rounded-lg text-xs font-bold cursor-pointer transition"
-                :class="filterDays === d ? 'bg-white dark:bg-slate-700 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-300'"
-              >{{ d }}d</button>
-              <button
-                type="button"
-                @click="pickCustom"
-                :aria-pressed="isCustom"
-                class="h-8 px-4 rounded-lg text-xs font-bold cursor-pointer transition"
-                :class="isCustom ? 'bg-white dark:bg-slate-700 text-[#006A3A] dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-300'"
-              >Custom</button>
-            </div>
-          </div>
-          <div v-if="isCustom" class="flex items-end gap-2">
-            <label class="flex flex-col gap-1.5">
-              <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">FROM</span>
-              <input
-                v-model="filterFrom"
-                type="date"
-                :max="filterTo || todayYmd()"
-                class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
-              />
-            </label>
-            <label class="flex flex-col gap-1.5">
-              <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">TO</span>
-              <input
-                v-model="filterTo"
-                type="date"
-                :min="filterFrom"
-                :max="todayYmd()"
-                class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
-              />
-            </label>
-            <span v-if="customInvalid" class="pb-2 text-xs font-semibold text-red-500">“From” must be before “To”</span>
-          </div>
-          <label class="flex flex-col gap-1.5">
-            <span class="text-[11px] font-bold tracking-wider text-slate-500 dark:text-slate-400">CLASS</span>
-            <select
-              v-model="filterCourseId"
-              class="h-9 min-w-[200px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-100"
-            >
-              <option value="">All classes ({{ courses.length }})</option>
-              <option v-for="c in courses" :key="c.id" :value="c.id">{{ c.title }}</option>
-            </select>
-          </label>
-          <div class="flex items-center gap-2 ml-auto">
-            <span v-if="filtersActive" class="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-[#006A3A] dark:text-emerald-400 text-xs font-bold">
-              {{ rangeText }}{{ filterCourseName ? ` · ${filterCourseName}` : '' }}
-            </span>
-            <button v-if="filtersActive" type="button" @click="resetFilters" class="text-xs font-bold text-[#006A3A] dark:text-emerald-400 cursor-pointer">Reset</button>
           </div>
         </div>
 
@@ -391,7 +295,7 @@ const exportReport = async () => {
           @retry="fetchOverview()"
         />
 
-        <StudentPerformanceTable :course-id="filterCourseId" :courses="courses" />
+        <StudentPerformanceTable :courses="courses" />
 
         <!-- Improved + At-risk -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
