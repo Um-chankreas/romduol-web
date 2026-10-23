@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 // Quiz score spread: a histogram (students per 10-point score band, one class
 // or all) and a box-plot comparison of the classes. Each student counts once,
@@ -50,16 +51,46 @@ const topBand = computed(() => {
 })
 
 // ── Box plot ──
+// One small chart per class, with the class name above it, a plain sentence
+// under it, and the names of students far from the rest next to their dots.
 const COLORS = ['#0B6B3A', '#5B5BD6', '#E0A100', '#E5484D', '#0891B2', '#C026D3']
-const BX0 = 130, BX1 = 580, ROW_H = 80
+const BX0 = 24, BX1 = 576
 const bx = (v) => BX0 + (v / 100) * (BX1 - BX0)
-const boxHeight = computed(() => Math.max(1, classes.value.length) * ROW_H + 60)
-const bGrid = [0, 20, 40, 60, 80, 100].map(v => ({ v, x: bx(v) }))
-const boxes = computed(() => classes.value.map((c, i) => {
+const AXIS = [0, 25, 50, 75, 100].map(v => ({ v, x: bx(v) }))
+const router = useRouter()
+const shortName = (name) => {
+  const t = String(name || '?').trim()
+  return t.length > 13 ? t.slice(0, 12) + '…' : t
+}
+const fmt = (v) => `${Math.round(v)}%`
+
+const panels = computed(() => classes.value.map((c, i) => {
   const b = c.scores.box
-  const cy = 36 + i * ROW_H + ROW_H / 2 - 10
-  return { id: c.course.id, name: c.course.title, n: c.scores.n, cy, color: COLORS[i % COLORS.length], box: c.scores.n >= 4 ? b : null }
+  const color = COLORS[i % COLORS.length]
+  if (c.scores.n < 4 || !b) return { id: c.course.id, title: c.course.title, n: c.scores.n, color, box: null }
+
+  // Label each outlier above its dot; labels that would collide go one line higher.
+  const placed = []
+  const dots = b.outliers.map((o) => {
+    const x = bx(o.score)
+    let level = 0
+    while (placed.some(p => p.level === level && Math.abs(p.x - x) < 78)) level += 1
+    placed.push({ x, level })
+    // Near the edges the label grows inward so it is never cut off.
+    const anchor = x < 80 ? 'start' : x > 520 ? 'end' : 'middle'
+    const labelX = anchor === 'start' ? Math.max(x - 6, 4) : anchor === 'end' ? Math.min(x + 6, 596) : x
+    return { ...o, x, level: Math.min(level, 2), labelX, anchor, label: shortName(o.name), low: o.score < b.q1 }
+  })
+  const low = dots.filter(d => d.low)
+  const high = dots.filter(d => !d.low)
+  return {
+    id: c.course.id, title: c.course.title, n: c.scores.n, color, box: b, dots, low, high,
+    q1x: bx(b.q1), q3x: bx(b.q3), medx: bx(b.median), minx: bx(b.min), maxx: bx(b.max),
+    boxW: Math.max(3, bx(b.q3) - bx(b.q1)),
+    sentence: `Half of the students score between ${fmt(b.q1)} and ${fmt(b.q3)}. The middle student scored ${fmt(b.median)}.`,
+  }
 }))
+const openStudent = (id) => router.push({ name: 'StudentProfile', params: { id } })
 </script>
 
 <template>
@@ -118,40 +149,64 @@ const boxes = computed(() => classes.value.map((c, i) => {
     <!-- Box plot -->
     <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200/60 dark:border-slate-800 shadow-sm min-w-0">
       <h2 class="text-base font-extrabold text-slate-900 dark:text-white">Class comparison</h2>
-      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Quiz scores per class: the box is the middle half of students</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Where most students score in each class, and who is far from the rest</p>
 
       <div v-if="loading && !data" class="h-56 mt-4 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse"></div>
-      <div v-else-if="!classes.length" class="mt-4 py-12 text-center text-sm text-slate-400">No quiz scores yet.</div>
-      <template v-else>
-        <svg :viewBox="`0 0 600 ${boxHeight}`" class="w-full mt-3 text-slate-500 dark:text-slate-400" role="img" aria-label="Box plot of quiz scores per class">
-          <g v-for="g in bGrid" :key="g.v">
-            <line :x1="g.x" :x2="g.x" y1="16" :y2="boxHeight - 40" stroke="currentColor" stroke-opacity="0.2" />
-            <text :x="g.x" :y="boxHeight - 24" text-anchor="middle" font-size="10" fill="currentColor">{{ g.v }}%</text>
-          </g>
-          <g v-for="b in boxes" :key="b.id">
-            <text x="6" :y="b.cy - 4" font-size="11" font-weight="700" fill="currentColor" class="text-slate-900 dark:text-white">{{ b.name.length > 16 ? b.name.slice(0, 15) + '…' : b.name }}</text>
-            <text x="6" :y="b.cy + 12" font-size="10" fill="currentColor">{{ b.n }} students</text>
-            <template v-if="b.box">
-              <line :x1="bx(b.box.min)" :x2="bx(b.box.q1)" :y1="b.cy" :y2="b.cy" :stroke="b.color" stroke-width="2" />
-              <line :x1="bx(b.box.q3)" :x2="bx(b.box.max)" :y1="b.cy" :y2="b.cy" :stroke="b.color" stroke-width="2" />
-              <line :x1="bx(b.box.min)" :x2="bx(b.box.min)" :y1="b.cy - 8" :y2="b.cy + 8" :stroke="b.color" stroke-width="2" />
-              <line :x1="bx(b.box.max)" :x2="bx(b.box.max)" :y1="b.cy - 8" :y2="b.cy + 8" :stroke="b.color" stroke-width="2" />
-              <rect :x="bx(b.box.q1)" :y="b.cy - 20" :width="Math.max(2, bx(b.box.q3) - bx(b.box.q1))" height="40" :fill="b.color" fill-opacity="0.15" :stroke="b.color" stroke-width="2" rx="3" />
-              <line :x1="bx(b.box.median)" :x2="bx(b.box.median)" :y1="b.cy - 20" :y2="b.cy + 20" :stroke="b.color" stroke-width="3" />
-              <circle v-for="(o, i) in b.box.outliers" :key="i" :cx="bx(o)" :cy="b.cy" r="4" fill="#fff" :stroke="b.color" stroke-width="2"><title>{{ o }}%</title></circle>
-              <text :x="bx(b.box.median)" :y="b.cy + 36" text-anchor="middle" font-size="10" font-weight="700" :fill="b.color">median {{ Math.round(b.box.median) }}%</text>
-            </template>
-            <text v-else :x="BX0" :y="b.cy + 4" font-size="11" fill="currentColor">Not enough scores yet (needs 4 students)</text>
-          </g>
-          <text :x="(BX0 + BX1) / 2" :y="boxHeight - 6" text-anchor="middle" font-size="10" fill="currentColor">Average quiz score</text>
-        </svg>
-        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
-          <span><b>Line in box</b> = median</span>
-          <span><b>Box</b> = middle 50% of students</span>
-          <span><b>Whiskers</b> = typical lowest and highest</span>
-          <span><b>Dots</b> = outliers</span>
+      <div v-else-if="!panels.length" class="mt-4 py-12 text-center text-sm text-slate-400">No quiz scores yet.</div>
+      <div v-else class="mt-4 space-y-6">
+        <div v-for="p in panels" :key="p.id">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h3 class="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-3 h-3 rounded-sm" :style="{ background: p.color }"></span>{{ p.title }}
+            </h3>
+            <span class="text-xs text-slate-500 dark:text-slate-400">{{ p.n }} students</span>
+          </div>
+
+          <p v-if="!p.box" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Not enough scores yet (needs at least 4 students with a quiz score).</p>
+          <template v-else>
+            <p class="mt-1 text-xs text-slate-700 dark:text-slate-200">{{ p.sentence }}</p>
+            <svg viewBox="0 0 600 124" class="w-full mt-1 text-slate-500 dark:text-slate-400" role="img" :aria-label="`Quiz scores for ${p.title}`">
+              <g v-for="g in AXIS" :key="g.v">
+                <line :x1="g.x" :x2="g.x" y1="44" y2="98" stroke="currentColor" stroke-opacity="0.2" />
+                <text :x="g.x" y="114" text-anchor="middle" font-size="10" fill="currentColor">{{ g.v }}%</text>
+              </g>
+              <line :x1="p.minx" :x2="p.q1x" y1="71" y2="71" :stroke="p.color" stroke-width="2" />
+              <line :x1="p.q3x" :x2="p.maxx" y1="71" y2="71" :stroke="p.color" stroke-width="2" />
+              <line :x1="p.minx" :x2="p.minx" y1="62" y2="80" :stroke="p.color" stroke-width="2" />
+              <line :x1="p.maxx" :x2="p.maxx" y1="62" y2="80" :stroke="p.color" stroke-width="2" />
+              <rect :x="p.q1x" y="53" :width="p.boxW" height="36" :fill="p.color" fill-opacity="0.16" :stroke="p.color" stroke-width="2" rx="4" />
+              <line :x1="p.medx" :x2="p.medx" y1="53" y2="89" :stroke="p.color" stroke-width="3" />
+              <g v-for="d in p.dots" :key="d.student_id" class="cursor-pointer" @click="openStudent(d.student_id)">
+                <circle :cx="d.x" cy="71" r="5" fill="#fff" :stroke="d.low ? '#E5484D' : '#16A34A'" stroke-width="2.5" />
+                <text :x="d.labelX" :y="38 - d.level * 13" :text-anchor="d.anchor" font-size="11" font-weight="700" fill="currentColor" class="text-slate-900 dark:text-white">{{ d.label }} {{ fmt(d.score) }}</text>
+                <title>{{ d.name }}: {{ fmt(d.score) }}</title>
+              </g>
+            </svg>
+
+            <div v-if="p.dots.length" class="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              <span class="text-slate-600 dark:text-slate-300">
+                {{ p.low.length ? `${p.low.length} ${p.low.length === 1 ? 'student scores' : 'students score'} far below the rest` : '' }}{{ p.low.length && p.high.length ? ', ' : '' }}{{ p.high.length ? `${p.high.length} far above` : '' }}:
+              </span>
+              <button
+                v-for="d in p.dots"
+                :key="d.student_id"
+                type="button"
+                @click="openStudent(d.student_id)"
+                class="px-2.5 py-1 rounded-full font-bold cursor-pointer"
+                :class="d.low ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'"
+              >{{ d.name }} · {{ fmt(d.score) }}</button>
+            </div>
+            <p v-else class="mt-1 text-xs text-slate-500 dark:text-slate-400">No student is far from the rest.</p>
+          </template>
         </div>
-      </template>
+
+        <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+          <b class="font-extrabold">How to read it:</b>
+          the <b>box</b> is where most students are (the middle half), the <b>thick line</b> is the middle student,
+          the <b>thin lines</b> reach the lowest and highest typical scores, and each <b>circle</b> is one student far from the rest
+          (red = far below, green = far above). Click a name to open that student.
+        </div>
+      </div>
     </div>
   </section>
 </template>
