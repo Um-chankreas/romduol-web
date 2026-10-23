@@ -27,7 +27,7 @@
 
       <nav class="space-y-1">
         <router-link v-for="item in topItems" :key="item.to" :to="item.to" :class="navClass(item.active)">
-          <component :is="item.icon" :class="iconClass(item.active)" />
+          <BrandIcon :name="item.icon" :active="item.active" :class="iconClass(item.active)" />
           <span class="truncate flex-1">{{ t(item.label) }}</span>
           <span v-if="item.badge" class="inline-flex items-center gap-1 rounded-full bg-red-600 text-white text-[10px] font-extrabold px-2 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-white" />{{ item.badge }}</span>
         </router-link>
@@ -46,12 +46,7 @@
                 : 'text-white/80 hover:bg-white/10 hover:text-white',
             ]"
           >
-            <KeyRound
-              :class="[
-                'w-[18px] h-[18px] shrink-0',
-                isRolesSectionActive ? 'text-white' : 'text-white/60 group-hover:text-white',
-              ]"
-            />
+            <BrandIcon name="lock" :class="iconClass(false)" />
             <span class="flex-1 truncate">{{ t('Roles & Permissions') }}</span>
             <ChevronDown class="w-4 h-4 shrink-0 opacity-60 transition-transform" :class="{ 'rotate-180': rolesMenuOpen }" />
           </button>
@@ -74,7 +69,7 @@
         <template v-if="toolItems.length">
           <p class="px-3 pt-5 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-white/50">{{ t('Tools') }}</p>
           <router-link v-for="item in toolItems" :key="item.to" :to="item.to" :class="navClass(item.active)">
-            <component :is="item.icon" :class="iconClass(item.active)" />
+            <BrandIcon :name="item.icon" :active="item.active" :class="iconClass(item.active)" />
             <span class="truncate">{{ t(item.label) }}</span>
           </router-link>
         </template>
@@ -82,11 +77,11 @@
         <template v-if="isAdmin">
           <div class="my-4 border-t border-white/15" />
           <a href="#" :class="navClass(false)">
-            <Folder :class="iconClass(false)" />
+            <BrandIcon name="books" :class="iconClass(false)" />
             <span class="truncate">{{ t('Resources') }}</span>
           </a>
           <a href="#" :class="navClass(false)">
-            <Settings :class="iconClass(false)" />
+            <BrandIcon name="settings" :class="iconClass(false)" />
             <span class="truncate">{{ t('Settings') }}</span>
           </a>
         </template>
@@ -98,10 +93,8 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import {
-  LayoutDashboard, Users, GraduationCap, KeyRound, FileText, Clapperboard,
-  CalendarDays, Folder, Settings, ChevronDown, Library, House, BookOpen, Activity,
-} from 'lucide-vue-next'
+import { ChevronDown } from 'lucide-vue-next'
+import BrandIcon from '../ui/BrandIcon.vue'
 import { useRoute } from 'vue-router'
 import { useLanguage } from '../../composables/useLanguage'
 import { authService } from '../../services/authService'
@@ -156,9 +149,10 @@ const navClass = (active) => [
     ? 'bg-white text-[#006A3A] shadow-sm'
     : 'text-white/80 hover:bg-white/10 hover:text-white',
 ]
+// The icons carry their own colours (white/yellow on green, green/yellow on the
+// white active pill); only the idle fade is applied here.
 const iconClass = (active) => [
-  'w-[18px] h-[18px] shrink-0',
-  active ? 'text-[#006A3A]' : 'text-white/60 group-hover:text-white',
+  active ? 'opacity-100' : 'opacity-80 group-hover:opacity-100 transition-opacity',
 ]
 const subClass = (active) => [
   'relative block pl-4 pr-3 py-2 rounded-lg text-[13px] font-semibold transition-colors',
@@ -168,25 +162,25 @@ const subClass = (active) => [
 ]
 
 const studentItems = computed(() => [
-  { to: '/home', label: 'Home', icon: House, active: route.path === '/home' },
-  { to: '/class', label: 'Class', icon: BookOpen, badge: liveCount.value > 0 ? 'LIVE' : '', active: route.path.startsWith('/class') || route.path.startsWith('/lessons/') || route.path.startsWith('/courses/') },
-  { to: '/library', label: 'Library', icon: Library, active: route.path.startsWith('/library') },
+  { to: '/home', label: 'Home', icon: 'home', active: route.path === '/home' },
+  { to: '/class', label: 'Class', icon: 'class', badge: liveCount.value > 0 ? 'LIVE' : '', active: route.path.startsWith('/class') || route.path.startsWith('/lessons/') || route.path.startsWith('/courses/') },
+  { to: '/library', label: 'Library', icon: 'library', active: route.path.startsWith('/library') },
 ])
 
 const teacherItems = computed(() => [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: permissions.value.dashboard, active: route.path === '/dashboard' },
-  { to: '/', label: 'My Classes', icon: Users, show: true, active: isMyClassesActive.value },
-  { to: '/schedule', label: 'Schedule', icon: CalendarDays, show: permissions.value.schedule, active: route.path === '/schedule' },
-  { to: '/students', label: 'Student Management', icon: GraduationCap, show: isAdmin.value, active: route.path === '/students' },
-  { to: '/agora-usage', label: 'Agora Usage', icon: Activity, show: isAdmin.value, active: route.path === '/agora-usage' },
-  { to: '/library', label: 'Library', icon: Library, show: true, active: route.path === '/library' },
+  { to: '/dashboard', label: 'Dashboard', icon: 'more', show: permissions.value.dashboard, active: route.path === '/dashboard' },
+  { to: '/', label: 'My Classes', icon: 'lesson', show: true, active: isMyClassesActive.value },
+  { to: '/schedule', label: 'Schedule', icon: 'study-time', show: permissions.value.schedule, active: route.path === '/schedule' },
+  { to: '/students', label: 'Student Management', icon: 'class', show: isAdmin.value, active: route.path === '/students' },
+  { to: '/agora-usage', label: 'Agora Usage', icon: 'live-class', show: isAdmin.value, active: route.path === '/agora-usage' },
+  { to: '/library', label: 'Library', icon: 'library', show: true, active: route.path === '/library' },
 ].filter(i => i.show))
 // Students get their own short menu, like the mobile tabs.
 const topItems = computed(() => (isStudent.value ? studentItems.value : teacherItems.value))
 
 const toolItems = computed(() => [
-  { to: '/tools/latex-to-text', label: 'LaTeX to Text', icon: FileText, show: permissions.value.latex_to_text },
-  { to: '/tools/video-editor', label: 'Video Editor', icon: Clapperboard, show: permissions.value.trim_video || permissions.value.compress_video },
+  { to: '/tools/latex-to-text', label: 'LaTeX to Text', icon: 'formulas', show: permissions.value.latex_to_text },
+  { to: '/tools/video-editor', label: 'Video Editor', icon: 'play', show: permissions.value.trim_video || permissions.value.compress_video },
 ].filter(i => i.show).map(i => ({ ...i, active: route.path === i.to })))
 
 const rolesSubItems = [
