@@ -193,6 +193,23 @@ const today = computed(() =>
 const navigateToDetails = (courseId) => router.push(`/courses/${courseId}`);
 const openStudents = () => router.push('/students');
 
+// ── Excel report ────────────────────────────────────────────────────────
+const exporting = ref(false);
+const exportReport = async () => {
+  exporting.value = true;
+  analyticsError.value = '';
+  try {
+    await analyticsService.downloadReport();
+  } catch (err) {
+    // A failed blob download comes back as a Blob, so the JSON error body needs reading.
+    let msg = err.message || 'Failed to export report.';
+    try { msg = JSON.parse(await err.response.data.text()).error || msg; } catch { /* keep msg */ }
+    analyticsError.value = msg;
+  } finally {
+    exporting.value = false;
+  }
+};
+
 // ── Create Class ────────────────────────────────────────────────────────
 const showCreateModal = ref(false);
 const creatingCourse = ref(false);
@@ -241,12 +258,21 @@ const handleCreateCourse = async ({ title, description, category, color, icon, i
             </h1>
             <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">{{ today }}</p>
           </div>
-          <button
-            @click="openCreateModal"
-            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
-          >
-            <span class="text-sm font-normal">+</span> Create Class
-          </button>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              @click="exportReport"
+              :disabled="exporting"
+              class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#006A3A] text-[#006A3A] dark:text-emerald-400 dark:border-emerald-500 bg-white dark:bg-slate-900 font-bold text-xs hover:bg-emerald-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {{ exporting ? 'Preparing…' : 'Export report (.xlsx)' }}
+            </button>
+            <button
+              @click="openCreateModal"
+              class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] text-white font-bold text-xs shadow-md hover:bg-[#005A31] transition cursor-pointer active:scale-95 shrink-0"
+            >
+              <span class="text-sm font-normal">+</span> Create Class
+            </button>
+          </div>
         </div>
 
         <div v-if="analyticsError" class="p-4 rounded-xl bg-red-500/10 text-red-500 text-sm">{{ analyticsError }}</div>

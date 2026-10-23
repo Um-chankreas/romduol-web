@@ -18,4 +18,18 @@ export const analyticsService = {
     const res = await api.get('/admin/analytics')
     return res.data?.data || res.data || {}
   },
+
+  // Dashboard report as an .xlsx file (data sheets + a Charts sheet with the
+  // charts embedded as pictures). Backend: GET /admin/analytics/export.
+  async downloadReport() {
+    const res = await api.get('/admin/analytics/export', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `romduol-dashboard_${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
