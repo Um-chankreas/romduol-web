@@ -114,8 +114,20 @@ export const videoToolsService = {
             })
 
             let job
+            let pollFailures = 0
             for (;;) {
-                const { data } = await api.get(`/video-tools/merge-jobs/${jobId}`)
+                // The merge keeps running on the server, so one dropped poll
+                // (network blip, proxy 502) shouldn't abort it. A 404 means the
+                // job is really gone (server restarted) — fail right away.
+                let data
+                try {
+                    ({ data } = await api.get(`/video-tools/merge-jobs/${jobId}`))
+                    pollFailures = 0
+                } catch (pollErr) {
+                    if (pollErr.response?.status === 404 || ++pollFailures > 20) throw pollErr
+                    await new Promise((r) => setTimeout(r, 3000))
+                    continue
+                }
                 job = data
                 onProcessProgress?.(job.percent || 0)
                 if (job.status === 'done') break

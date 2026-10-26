@@ -83,15 +83,18 @@ export const unitService = {
     // Same direct-to-storage flow as lessonService.uploadLessonVideo (a chapter's
     // own video): ask for a signed URL, upload the file straight to storage,
     // then record the path on the unit. `onProgress(percent)` fires during the
-    // direct upload. Returns the updated unit (with a public `video_url`).
-    async uploadUnitVideo(unitId, file, { onProgress } = {}) {
+    // direct upload. Returns the updated unit (with public `video_url` and
+    // `practice_video_url`). A unit has two optional videos: `kind` is 'lesson'
+    // (default — the original video) or 'practice'.
+    async uploadUnitVideo(unitId, file, { onProgress, kind = 'lesson' } = {}) {
         const contentType = videoContentType(file)
         if (!contentType) {
             throw new Error('Unsupported video type. Use MP4, MOV, WebM, M4V or MKV.')
         }
 
         const urlRes = await api.post(`/units/${unitId}/video/upload-url`, {
-            content_type: contentType
+            content_type: contentType,
+            kind
         })
         const { path } = urlRes.data.data
 
@@ -100,13 +103,14 @@ export const unitService = {
         const duration_seconds = await readVideoDuration(file)
         const attachRes = await api.post(`/units/${unitId}/video`, {
             path,
+            kind,
             ...(duration_seconds ? { duration_seconds } : {})
         })
         return attachRes.data
     },
 
-    async removeUnitVideo(unitId) {
-        const response = await api.delete(`/units/${unitId}/video`)
+    async removeUnitVideo(unitId, kind = 'lesson') {
+        const response = await api.delete(`/units/${unitId}/video`, { params: { kind } })
         return response.data
     },
 }

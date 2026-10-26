@@ -156,7 +156,7 @@ const rosterError = ref(null)
 const rosterCount = computed(() => roster.value?.students?.length)
 
 const fetchRoster = async ({ silent = false } = {}) => {
-  if (!['teacher', 'admin'].includes(authService.getCurrentUser()?.role)) return
+  if (!['teacher', 'admin', 'super_admin'].includes(authService.getCurrentUser()?.role)) return
   try {
     if (!silent) {
       rosterLoading.value = true

@@ -26,67 +26,75 @@ const resetFromUnit = () => {
 }
 watch(() => props.unit?.id, resetFromUnit, { immediate: true })
 
-// ── Unit video ────────────────────────────────────────────────────────────
-// A single optional video for this unit (separate from the chapter's own
-// intro video). Needs the unit to already exist — a brand-new, unsaved unit
-// has nowhere to attach the video to yet.
-const unitVideo = ref({ url: null, duration: null })
-watch(() => props.unit, (u) => {
-  unitVideo.value = { url: u?.video_url || null, duration: u?.duration_seconds || null }
-}, { immediate: true })
+// ── Unit videos ───────────────────────────────────────────────────────────
+// A unit has two optional videos — a lesson video and a practice video (questions &
+// homework) — either, both or neither (separate from the chapter's own intro video).
+// Needs the unit to already exist — a brand-new, unsaved unit has nowhere to attach
+// a video to yet.
+const VIDEO_SLOTS = [
+  { kind: 'lesson', label: 'Lesson video', urlKey: 'video_url', durKey: 'duration_seconds' },
+  { kind: 'practice', label: 'Practice video', urlKey: 'practice_video_url', durKey: 'practice_duration_seconds' }
+]
+const blankSlot = () => ({ url: null, duration: null, dragging: false, uploading: false, progress: 0, error: '', removing: false })
+const videos = ref({ lesson: blankSlot(), practice: blankSlot() })
+const videoFileRefs = ref({})
 
-const videoFileRef = ref(null)
-const videoDragging = ref(false)
-const videoUploading = ref(false)
-const videoProgress = ref(0)
-const videoError = ref('')
+const applyUnitVideos = (u) => {
+  for (const slot of VIDEO_SLOTS) {
+    videos.value[slot.kind].url = u?.[slot.urlKey] || null
+    videos.value[slot.kind].duration = u?.[slot.durKey] || null
+  }
+}
+watch(() => props.unit, applyUnitVideos, { immediate: true })
 
-const pickVideo = () => videoFileRef.value?.click()
+const pickVideo = (kind) => videoFileRefs.value[kind]?.click()
 
-const uploadVideo = async (file) => {
-  videoError.value = null
+const uploadVideo = async (kind, file) => {
+  const v = videos.value[kind]
+  v.error = ''
   if (!isSupportedVideoFile(file)) {
-    videoError.value = 'Unsupported video type. Use MP4, MOV, WebM, M4V or MKV.'
+    v.error = 'Unsupported video type. Use MP4, MOV, WebM, M4V or MKV.'
     return
   }
-  videoUploading.value = true
-  videoProgress.value = 0
+  v.uploading = true
+  v.progress = 0
   try {
     const res = await unitService.uploadUnitVideo(props.unit.id, file, {
-      onProgress: (p) => { videoProgress.value = p }
+      kind,
+      onProgress: (p) => { v.progress = p }
     })
-    const updated = res?.data?.unit
-    unitVideo.value = { url: updated?.video_url || null, duration: updated?.duration_seconds || null }
+    applyUnitVideos(res?.data?.unit)
   } catch (err) {
-    videoError.value = err.response?.data?.error || err.message || 'Failed to upload video'
+    v.error = err.response?.data?.error || err.message || 'Failed to upload video'
   } finally {
-    videoUploading.value = false
+    v.uploading = false
   }
 }
 
-const handleVideoFile = (e) => {
+const handleVideoFile = (kind, e) => {
   const file = e.target.files?.[0]
   e.target.value = ''
-  if (file) uploadVideo(file)
+  if (file) uploadVideo(kind, file)
 }
-const handleVideoDrop = (e) => {
-  videoDragging.value = false
+const handleVideoDrop = (kind, e) => {
+  videos.value[kind].dragging = false
   const file = e.dataTransfer.files?.[0]
-  if (file) uploadVideo(file)
+  if (file) uploadVideo(kind, file)
 }
 
-const removingVideo = ref(false)
-const removeVideo = async () => {
-  if (!confirm('Remove this unit\'s video?')) return
-  removingVideo.value = true
-  videoError.value = null
+const removeVideo = async (slot) => {
+  if (!confirm(`Remove this unit's ${slot.label.toLowerCase()}?`)) return
+  const v = videos.value[slot.kind]
+  v.removing = true
+  v.error = ''
   try {
-    await unitService.removeUnitVideo(props.unit.id)
-    unitVideo.value = { url: null, duration: null }
+    await unitService.removeUnitVideo(props.unit.id, slot.kind)
+    v.url = null
+    v.duration = null
   } catch (err) {
-    videoError.value = err.response?.data?.error || err.message || 'Failed to remove video'
+    v.error = err.response?.data?.error || err.message || 'Failed to remove video'
   } finally {
-    removingVideo.value = false
+    v.removing = false
   }
 }
 
@@ -291,51 +299,54 @@ const inputCls =
       </div>
     </div>
 
-    <!-- Unit video (separate from the chapter's own intro video) -->
+    <!-- Unit videos: lesson + practice, both optional (separate from the chapter's own intro video) -->
     <div>
-      <p class="block text-xs font-bold text-slate-800 dark:text-slate-300 mb-2">Unit video</p>
+      <p class="block text-xs font-bold text-slate-800 dark:text-slate-300 mb-2">Unit videos <span class="font-medium text-slate-500">(both optional)</span></p>
 
       <p v-if="!unit" class="text-xs text-slate-500 dark:text-slate-400">
-        Save the unit first, then you can add a video.
+        Save the unit first, then you can add videos.
       </p>
 
-      <template v-else>
-        <input ref="videoFileRef" type="file" class="hidden" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/x-matroska,.mp4,.mov,.webm,.m4v,.mkv" @change="handleVideoFile($event)" />
+      <div v-else class="grid gap-4 sm:grid-cols-2">
+        <div v-for="slot in VIDEO_SLOTS" :key="slot.kind">
+          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">{{ slot.label }}</p>
+          <input :ref="(el) => { videoFileRefs[slot.kind] = el }" type="file" class="hidden" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/x-matroska,.mp4,.mov,.webm,.m4v,.mkv" @change="handleVideoFile(slot.kind, $event)" />
 
-        <div v-if="unitVideo.url" class="space-y-2">
-          <video :src="unitVideo.url" controls class="w-full max-h-72 rounded-lg bg-black"></video>
-          <div class="flex items-center justify-between">
-            <button type="button" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline" @click="pickVideo">Replace video</button>
-            <button type="button" :disabled="removingVideo" class="text-xs font-bold text-red-600 hover:underline disabled:opacity-50" @click="removeVideo">
-              {{ removingVideo ? 'Removing…' : 'Remove video' }}
-            </button>
+          <div v-if="videos[slot.kind].url" class="space-y-2">
+            <video :src="videos[slot.kind].url" controls class="w-full max-h-72 rounded-lg bg-black"></video>
+            <div class="flex items-center justify-between">
+              <button type="button" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline" @click="pickVideo(slot.kind)">Replace</button>
+              <button type="button" :disabled="videos[slot.kind].removing" class="text-xs font-bold text-red-600 hover:underline disabled:opacity-50" @click="removeVideo(slot)">
+                {{ videos[slot.kind].removing ? 'Removing…' : 'Remove' }}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div
-          v-else
-          @dragover.prevent="videoDragging = true"
-          @dragleave.prevent="videoDragging = false"
-          @drop.prevent="handleVideoDrop($event)"
-          :class="[
-            'w-full border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition cursor-pointer',
-            videoDragging ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
-          ]"
-          @click="pickVideo"
-        >
-          <div class="text-xl mb-1">🎥</div>
-          <p class="text-xs font-bold text-slate-900 dark:text-white">Click to browse or drop a video</p>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">MP4, MOV, WebM, M4V or MKV</p>
-        </div>
-
-        <div v-if="videoUploading" class="mt-2 space-y-1">
-          <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-            <div class="h-full bg-emerald-600 transition-all" :style="{ width: videoProgress + '%' }"></div>
+          <div
+            v-else
+            @dragover.prevent="videos[slot.kind].dragging = true"
+            @dragleave.prevent="videos[slot.kind].dragging = false"
+            @drop.prevent="handleVideoDrop(slot.kind, $event)"
+            :class="[
+              'w-full border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition cursor-pointer',
+              videos[slot.kind].dragging ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+            ]"
+            @click="pickVideo(slot.kind)"
+          >
+            <div class="text-xl mb-1">🎥</div>
+            <p class="text-xs font-bold text-slate-900 dark:text-white">Click to browse or drop a video</p>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">MP4, MOV, WebM, M4V or MKV</p>
           </div>
-          <p class="text-[11px] text-slate-500 dark:text-slate-400">Uploading… {{ videoProgress }}%</p>
+
+          <div v-if="videos[slot.kind].uploading" class="mt-2 space-y-1">
+            <div class="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full bg-emerald-600 transition-all" :style="{ width: videos[slot.kind].progress + '%' }"></div>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Uploading… {{ videos[slot.kind].progress }}%</p>
+          </div>
+          <p v-if="videos[slot.kind].error" class="text-xs text-red-600 mt-1">{{ videos[slot.kind].error }}</p>
         </div>
-        <p v-if="videoError" class="text-xs text-red-600 mt-1">{{ videoError }}</p>
-      </template>
+      </div>
     </div>
 
     <div class="flex items-center justify-between">

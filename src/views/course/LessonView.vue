@@ -21,7 +21,9 @@ const router = useRouter()
 
 const lessonId = computed(() => route.params.lessonId)
 const currentUser = authService.getCurrentUser()
-const isTeacher = currentUser?.role === 'teacher'
+// Teachers, admins and super admins all get the edit controls (the API lets
+// admins edit any course; teachers only their own).
+const isTeacher = ['teacher', 'admin', 'super_admin'].includes(currentUser?.role)
 
 const chapter = ref(null)
 const courseAccess = ref(false)
@@ -31,6 +33,20 @@ const error = ref(null)
 
 const selectedId = ref(null)
 const selected = computed(() => units.value.find((u) => u.id === selectedId.value) || null)
+
+// A unit can have a lesson video, a practice video, both or neither. When there are two,
+// the reader gets a switcher; with one it just plays; with none nothing shows.
+const unitVideos = computed(() => {
+  const u = selected.value
+  if (!u) return []
+  return [
+    { kind: 'lesson', label: 'Lesson video', url: u.video_url },
+    { kind: 'practice', label: 'Practice video', url: u.practice_video_url }
+  ].filter((v) => v.url)
+})
+const activeVideoKind = ref('lesson')
+const activeVideo = computed(() => unitVideos.value.find((v) => v.kind === activeVideoKind.value) || unitVideos.value[0] || null)
+watch(selectedId, () => { activeVideoKind.value = 'lesson' })
 
 // Ref onto the curriculum sidebar so an inline edit/delete here (below) can
 // tell it its own cached list for this chapter is stale — otherwise the
@@ -314,12 +330,28 @@ onMounted(load)
                   </template>
 
                   <template v-else-if="!isTeacher || !courseAccess || activeTab === 'theory'">
-                    <video
-                      v-if="selected.video_url"
-                      :src="selected.video_url"
-                      controls
-                      class="w-full max-h-[60vh] rounded-xl bg-black mb-5"
-                    ></video>
+                    <div v-if="activeVideo" class="mb-5">
+                      <div v-if="unitVideos.length > 1" class="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 mb-2">
+                        <button
+                          v-for="v in unitVideos"
+                          :key="v.kind"
+                          type="button"
+                          :class="[
+                            'px-3 py-1.5 text-xs font-bold rounded-md transition',
+                            activeVideo.kind === v.kind
+                              ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-400 shadow-sm'
+                              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                          ]"
+                          @click="activeVideoKind = v.kind"
+                        >{{ v.label }}</button>
+                      </div>
+                      <video
+                        :key="activeVideo.url"
+                        :src="activeVideo.url"
+                        controls
+                        class="w-full max-h-[60vh] rounded-xl bg-black"
+                      ></video>
+                    </div>
 
                     <MarkdownContent v-if="selected.content != null" :source="selected.content" />
 
