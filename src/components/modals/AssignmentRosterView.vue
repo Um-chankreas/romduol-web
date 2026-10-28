@@ -65,7 +65,21 @@
         </div>
       </div>
 
-      <div class="shrink-0 p-6 sm:p-8 pt-4 flex justify-end">
+      <div class="shrink-0 p-6 sm:p-8 pt-4 flex items-center justify-end gap-3">
+        <p
+          v-if="remindMessage"
+          :class="['mr-auto text-xs', remindFailed ? 'text-red-600' : 'text-emerald-700 dark:text-emerald-400']"
+        >
+          {{ remindMessage }}
+        </p>
+        <button
+          v-if="pendingCount > 0 && assignment?.status === 'published'"
+          @click="remind"
+          :disabled="reminding"
+          class="px-5 py-2 rounded-full bg-[#016a36] text-white hover:bg-[#015a2e] disabled:opacity-60 text-sm font-semibold transition"
+        >
+          {{ reminding ? 'Sending…' : `Remind ${pendingCount} student${pendingCount === 1 ? '' : 's'}` }}
+        </button>
         <button
           @click="$emit('close')"
           class="px-5 py-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 text-sm font-semibold transition"
@@ -92,6 +106,29 @@ const error = ref(null)
 
 const roster = computed(() => assignment.value?.roster || [])
 const submittedCount = computed(() => roster.value.filter(r => r.submission).length)
+const pendingCount = computed(() => roster.value.length - submittedCount.value)
+
+// Push a reminder to the students who have not submitted. The server rate
+// limits it (429 with a readable message), so just show what it says.
+const reminding = ref(false)
+const remindMessage = ref('')
+const remindFailed = ref(false)
+const remind = async () => {
+  reminding.value = true
+  remindMessage.value = ''
+  try {
+    const { sent, pending } = await assignmentService.remindStudents(props.assignmentId)
+    remindFailed.value = false
+    remindMessage.value = sent > 0
+      ? `Reminder sent to ${sent} student${sent === 1 ? '' : 's'}.`
+      : pending > 0 ? 'No active students to notify.' : 'Everyone has submitted.'
+  } catch (err) {
+    remindFailed.value = true
+    remindMessage.value = err.response?.data?.error || err.message || 'Could not send the reminder'
+  } finally {
+    reminding.value = false
+  }
+}
 
 const isPastDue = computed(() =>
   !!assignment.value?.due_date && new Date(assignment.value.due_date) < new Date()

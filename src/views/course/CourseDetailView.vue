@@ -12,6 +12,8 @@ import QuizListView from '@/views/course/QuizListView.vue'
 import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
 import ClassScheduleCard from '@/components/classes/ClassScheduleCard.vue'
 import CourseStudentsProgress from '@/components/insights/CourseStudentsProgress.vue'
+import BrandIcon from '@/components/ui/BrandIcon.vue'
+import { useTheme } from '@/composables/useTheme.js'
 import { authService } from '@/services/authService'
 
 // Students read the course; authoring controls are for teachers/admins.
@@ -25,6 +27,8 @@ import { insightsService } from '@/services/insightsService'
 defineOptions({ name: 'CourseDetailView' })
 
 const route = useRoute()
+const { isDark } = useTheme()
+const lightSet = computed(() => (isDark.value ? 'darkmode-line' : 'line-light'))
 const router = useRouter()
 
 const course = ref(null)
@@ -101,11 +105,11 @@ const themeColors = [
 ]
 
 const tabs = computed(() => [
-  { id: 'lessons', name: 'Lessons', icon: '📖', tint: 'bg-blue-100 dark:bg-blue-950/50', count: lessons.value.length },
-  { id: 'quizzes', name: 'Quizzes', icon: '❓', tint: 'bg-rose-100 dark:bg-rose-950/50', count: allQuizzes.value.length },
-  { id: 'assignments', name: 'Assignments', icon: '📋', tint: 'bg-violet-100 dark:bg-violet-950/50', count: assignments.value.length },
-  { id: 'students', name: 'Students', icon: '👥', tint: 'bg-emerald-100 dark:bg-emerald-950/50', count: rosterCount.value },
-  { id: 'schedule', name: 'Schedule', icon: '📅', tint: 'bg-amber-100 dark:bg-amber-950/50' }
+  { id: 'lessons', name: 'Lessons', icon: 'lesson', tint: 'bg-emerald-50 dark:bg-slate-800', count: lessons.value.length },
+  { id: 'quizzes', name: 'Quizzes', icon: 'quiz', tint: 'bg-emerald-50 dark:bg-slate-800', count: allQuizzes.value.length },
+  { id: 'assignments', name: 'Assignments', icon: 'assignment', tint: 'bg-emerald-50 dark:bg-slate-800', count: assignments.value.length },
+  { id: 'students', name: 'Students', icon: 'class', tint: 'bg-emerald-50 dark:bg-slate-800', count: rosterCount.value },
+  { id: 'schedule', name: 'Schedule', icon: 'study-time', tint: 'bg-emerald-50 dark:bg-slate-800' }
 ])
 
 // ── Assignments ───────────────────────────────────────────────────────────
@@ -558,7 +562,7 @@ onMounted(() => {
                         course.is_free ? 'bg-amber-400 text-amber-950' : 'bg-white/90 text-slate-800'
                       ]"
                     >
-                      {{ course.is_free ? '🎁 Free' : '💳 Paid' }}
+                      <span class="inline-flex items-center gap-1"><BrandIcon v-if="course.is_free" name="gift" set="line-light" :size="14" />{{ course.is_free ? 'Free' : 'Paid' }}</span>
                     </span>
                     <span v-if="rosterCount !== undefined" class="flex items-center gap-1.5 text-xs font-medium text-white/85">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -653,7 +657,7 @@ onMounted(() => {
                         'w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0',
                         activeTab === tab.id ? 'bg-white/15' : tab.tint
                       ]"
-                    >{{ tab.icon }}</span>
+                    ><BrandIcon :name="tab.icon" :set="activeTab === tab.id ? 'line-dark' : lightSet" :size="22" /></span>
                     <span>{{ tab.name }}</span>
                   </div>
                   <span
@@ -751,7 +755,7 @@ onMounted(() => {
                         :to="{ name: 'Lesson', params: { lessonId: lesson.id } }"
                         class="inline-flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition active:scale-95"
                       >
-                        📖 Open chapter &amp; units
+                        <BrandIcon name="lesson" :set="lightSet" :size="16" /> Open chapter &amp; units
                       </router-link>
 
                       <!-- ATTACHED MATERIALS & QUIZ SECTION -->
@@ -830,7 +834,7 @@ onMounted(() => {
                         Lesson: {{ quiz.lesson_title || 'Untitled Lesson' }}
                       </p>
                       <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <span>❓ {{ quiz.total_questions ?? 0 }} questions</span>
+                        <span class="inline-flex items-center gap-1"><BrandIcon name="quiz" :set="lightSet" :size="14" /> {{ quiz.total_questions ?? 0 }} questions</span>
                       </div>
                     </div>
                   </div>
@@ -842,7 +846,7 @@ onMounted(() => {
                     v-if="assignments.length === 0"
                     class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900/30 p-8 text-center shadow-xs"
                   >
-                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto">📋</div>
+                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto"><BrandIcon name="assignment" :set="lightSet" :size="28" /></div>
                     <h3 class="text-base font-bold text-slate-900 dark:text-white">No assignments yet</h3>
                     <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Create one for students to submit work.</p>
                   </div>

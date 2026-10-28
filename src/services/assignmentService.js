@@ -14,6 +14,13 @@ export const assignmentService = {
         return response.data?.data?.assignment || response.data?.assignment || null
     },
 
+    // Teacher: push a reminder to every enrolled student who has not submitted.
+    // Resolves { sent, pending }; the server answers 429 if one went out recently.
+    async remindStudents(id) {
+        const response = await api.post(`/assignments/${id}/remind`)
+        return response.data?.data || { sent: 0, pending: 0 }
+    },
+
     // Teacher: create an assignment. { course_id, title, description?, due_date?, type?, status? }
     // type: 'file' (default, free-text/file submission) | 'quiz' (MCQ, auto-graded).
     // status: 'draft' (default) | 'published' — only meaningful for file-type

@@ -173,6 +173,7 @@ const teacherItems = computed(() => [
   { to: '/schedule', label: 'Schedule', icon: 'study-time', show: permissions.value.schedule, active: route.path === '/schedule' },
   { to: '/students', label: 'Student Management', icon: 'class', show: isAdmin.value, active: route.path === '/students' },
   { to: '/agora-usage', label: 'Agora Usage', icon: 'live-class', show: isAdmin.value, active: route.path === '/agora-usage' },
+  { to: '/stories', label: 'Khmer Stories', icon: 'books', show: isAdmin.value, active: route.path === '/stories' },
   { to: '/library', label: 'Library', icon: 'library', show: true, active: route.path === '/library' },
 ].filter(i => i.show))
 // Students get their own short menu, like the mobile tabs.

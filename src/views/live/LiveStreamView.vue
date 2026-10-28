@@ -653,7 +653,7 @@ const router = useRouter();
 const targetClassId = computed(() => props.liveClassId || route.params.id);
 
 const currentUser = authService.getCurrentUser();
-const isTeacher = ref(currentUser?.role === 'teacher');
+const isTeacher = ref(['teacher', 'admin', 'super_admin'].includes(currentUser?.role));
 const userName = ref(currentUser?.name || 'User');
 const userAvatar = ref(currentUser?.avatar || currentUser?.avatar_url || '');
 

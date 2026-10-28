@@ -104,9 +104,9 @@ const fetchSchedules = async () => {
 
 // course_id -> id of the live session running for it right now. Drives the
 // card's "Live now · Rejoin" state, so a teacher goes back into the running
-// session instead of starting a second one. Only teachers can start/own live
-// classes (POST /live-classes is teacher-only), so only they fetch it.
-const isTeacherRole = authService.getCurrentUser()?.role === 'teacher';
+// session instead of starting a second one. Teachers and admins can start live
+// classes, so only they (and students) fetch it.
+const isTeacherRole = ['teacher', 'admin', 'super_admin'].includes(authService.getCurrentUser()?.role);
 // Students never start a class; they only see "Join Class" while one is live.
 const isStudentRole = authService.getCurrentUser()?.role === 'student';
 const watchesLive = isTeacherRole || isStudentRole;
