@@ -106,6 +106,18 @@
           <CollapsibleNotice :message="deviceNotice" label="Camera / mic" @dismiss="deviceNotice = ''" />
           <CollapsibleNotice :message="shareWarning" label="Screen share" role="alert" @dismiss="shareWarning = ''" />
           <div
+            v-if="canPublish && isConnected && sendStats"
+            role="status"
+            :class="['inline-flex items-center gap-2 rounded-full border bg-slate-900/90 backdrop-blur px-3 py-1 text-[11px] shadow-md',
+              uplinkLevel === 'bad' ? 'border-red-500/60 text-red-300' : uplinkLevel === 'weak' ? 'border-amber-500/60 text-amber-300' : 'border-slate-600 text-slate-200']"
+            :title="'Sending ' + sendStats.res + ' at ' + sendStats.fps + ' fps, ' + sendStats.kbps + ' kbps. Round trip ' + sendStats.rtt + ' ms, packet loss ' + sendStats.loss + '%'"
+          >
+            <span :class="['h-2 w-2 rounded-full', uplinkLevel === 'bad' ? 'bg-red-500' : uplinkLevel === 'weak' ? 'bg-amber-400' : 'bg-emerald-500']"></span>
+            <span v-if="uplinkLevel === 'bad'">Your upload is poor — students will see delay. Close other apps or use a wired connection.</span>
+            <span v-else-if="uplinkLevel === 'weak'">Your upload is weak ({{ sendStats.kbps }} kbps · {{ sendStats.rtt }} ms)</span>
+            <span v-else>Upload good · {{ sendStats.res }} {{ sendStats.fps }} fps</span>
+          </div>
+          <div
             v-if="recState === 'finishing' || recSaving"
             role="status"
             class="inline-flex items-center gap-2 rounded-full border border-slate-600 bg-slate-900/90 backdrop-blur px-3 py-1 text-[11px] text-slate-200 shadow-md"
@@ -694,6 +706,33 @@ const handStatus = ref('none');
 
 // Agora
 let agoraEngine = null;
+
+// Teacher-side send health: Agora's uplink quality (1 best … 5 worst, 0
+// unknown) plus what the encoder actually sends. A slow class for every
+// student is almost always the presenter's upload or CPU, so make it visible.
+const uplinkQuality = ref(0);
+const sendStats = ref(null);
+const uplinkLevel = computed(() => (uplinkQuality.value >= 4 ? 'bad' : uplinkQuality.value === 3 ? 'weak' : 'good'));
+let statsTimer = null;
+const pollSendStats = () => {
+  if (!agoraEngine || !canPublish.value) return;
+  try {
+    const v = agoraEngine.getLocalVideoStats?.() || {};
+    const r = agoraEngine.getRTCStats?.() || {};
+    if (!v.sendBitrate && !v.sendFrameRate && !agoraEngine.localTracks?.some(t => t.trackMediaType === 'video')) {
+      sendStats.value = null;   // nothing being sent (camera and share both off)
+      return;
+    }
+    sendStats.value = {
+      kbps: Math.round((v.sendBitrate || 0) / 1000),
+      fps: Math.round(v.sendFrameRate || 0),
+      res: v.sendResolutionWidth ? `${v.sendResolutionWidth}x${v.sendResolutionHeight}` : '—',
+      rtt: Math.round(r.RTT || 0),
+      loss: Math.round(v.currentPacketLossRate || 0),
+    };
+    console.info('[live] send stats', sendStats.value, 'uplink', uplinkQuality.value);
+  } catch { /* stats unavailable */ }
+};
 let localAudioTrack = null;
 let localVideoTrack = null;
 let screenTrack = null;
@@ -970,6 +1009,7 @@ const warnBeforeClose = (e) => {
 window.addEventListener('beforeunload', warnBeforeClose);
 
 onBeforeUnmount(() => {
+  clearInterval(statsTimer); statsTimer = null;
   window.removeEventListener('beforeunload', warnBeforeClose);
   clearInterval(clockTimer);
   clearInterval(pollTimer);
@@ -1203,6 +1243,10 @@ async function initializeAgora(appId, channel, token, numericUid) {
   // Communication profile). Publishers are "host", everyone else "audience".
   agoraEngine = AgoraRTC.createClient({ mode: 'live', codec: 'vp8', role: canPublish.value ? 'host' : 'audience' });
 
+  // Send a second, small copy of the teacher's video; viewers on a weak
+  // connection are switched to it automatically instead of stuttering.
+  if (canPublish.value) agoraEngine.enableDualStream().catch((e) => console.warn('dual stream unavailable:', e));
+
   agoraEngine.on('user-published', handleUserPublished);
   agoraEngine.on('user-unpublished', handleUserUnpublished);
   agoraEngine.on('user-info-updated', handleUserInfoUpdated);
@@ -1213,6 +1257,8 @@ async function initializeAgora(appId, channel, token, numericUid) {
     remoteUsers.value = remoteUsers.value.filter(u => u.uid !== user.uid);
     detachVideo(user.uid);
   });
+  agoraEngine.on('network-quality', (q) => { uplinkQuality.value = q.uplinkNetworkQuality || 0; });
+  if (!statsTimer) statsTimer = setInterval(pollSendStats, 3000);
   agoraEngine.on('token-privilege-will-expire', () => renewAgoraToken());
   agoraEngine.on('token-privilege-did-expire', onTokenDidExpire);
   agoraEngine.on('connection-state-change', onConnectionStateChange);
@@ -1488,6 +1534,7 @@ const handleUserPublished = async (user, mediaType) => {
   await agoraEngine.subscribe(user, mediaType);
 
   if (mediaType === 'video') {
+    try { await agoraEngine.setStreamFallbackOption(user.uid, 1); } catch { /* no low stream published */ }
     upsertRemote(user.uid, { hasVideo: true, videoReady: false });
     await nextTick();
     attachVideo(user.uid, user.videoTrack, remoteVideoTarget(user.uid));
@@ -1772,6 +1819,7 @@ const SCREEN_SHARE_HINTS = {
   displaySurface: 'window',
   selfBrowserSurface: 'exclude',
   surfaceSwitching: 'include',
+  systemAudio: 'include',   // offer the "share audio" checkbox in the picker
 };
 
 // Warning shown while a share may show more than intended.
@@ -1820,14 +1868,20 @@ const toggleScreenShare = async () => {
       optimizationMode: 'detail',
       ...SCREEN_SHARE_HINTS,
     }, 'auto');
-    const [track] = screenTracks();
+    const [track, screenAudio] = screenTracks();
 
     if (localVideoTrack && agoraEngine.localTracks.includes(localVideoTrack)) {
       await agoraEngine.unpublish(localVideoTrack);
       cameraUnpublished = true;
       cameraPausedForShare = true;
     }
-    await agoraEngine.publish(track);
+    // The shared tab's / system's sound travels as a second track; without
+    // publishing it students see the video but hear nothing from it. It mixes
+    // with the teacher's microphone.
+    await agoraEngine.publish(screenAudio ? [track, screenAudio] : track);
+    if (!screenAudio) {
+      flash('Sharing without sound. To let students hear a video or audio, share a Chrome Tab and tick "Also share tab audio".', 8000);
+    }
 
     // The screen track is deliberately not played back locally (see the
     // "You're presenting" tile). Stop the camera preview so it doesn't sit
@@ -1859,9 +1913,9 @@ const handleStopScreenShare = async () => {
   try {
     // 1. Stop sending it. Whatever happens here, the capture itself must still
     //    be released below, so an error is logged, not allowed to abort.
-    const [video] = screenTracks();
+    const published = screenTracks();
     try {
-      if (video && agoraEngine) await agoraEngine.unpublish(video);
+      if (published.length && agoraEngine) await agoraEngine.unpublish(published);
     } catch (err) {
       console.warn('unpublishing the screen track failed:', err);
     }
