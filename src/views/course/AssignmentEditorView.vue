@@ -117,6 +117,17 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Opens at <span class="font-medium text-slate-400">(optional — students see it from then)</span>
+              </label>
+              <input
+                v-model="opensAtLocal"
+                type="datetime-local"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-600"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Due date <span class="font-medium text-slate-400">(optional)</span>
               </label>
               <input
@@ -317,6 +328,7 @@ const assignment = ref({
   points: 100,
 })
 const dueDateLocal = ref('') // bound to the datetime-local input
+const opensAtLocal = ref('')
 
 // `datetime-local` wants "YYYY-MM-DDTHH:mm" in local time.
 const toLocalInput = (iso) => {
@@ -371,6 +383,7 @@ const load = async () => {
       points: Number.isFinite(Number(a.points)) && Number(a.points) > 0 ? Number(a.points) : 100,
     }
     dueDateLocal.value = toLocalInput(a.due_date)
+    opensAtLocal.value = toLocalInput(a.opens_at)
     roster.value = a.roster || []
     submissions.value = a.submissions || []
     if (assignment.value.type === 'quiz') {
@@ -500,6 +513,7 @@ const save = async (targetStatus) => {
       title: assignment.value.title.trim(),
       description: assignment.value.description.trim(),
       due_date: dueDateLocal.value ? new Date(dueDateLocal.value).toISOString() : null,
+      opens_at: opensAtLocal.value ? new Date(opensAtLocal.value).toISOString() : null,
       points: Math.round(Number(assignment.value.points)),
     }
 

@@ -183,6 +183,11 @@ const routes = [
         name: 'EditAssignment',
         component: () => import('@/views/course/AssignmentEditorView.vue') // Reusing the creator view
     },
+    {
+        path: '/course/:courseId/assignment/:id/results',
+        name: 'AssignmentResults',
+        component: () => import('@/views/course/AssignmentResultsView.vue')
+    },
     // Fallback route
     {
         path: '/:pathMatch(.*)*',

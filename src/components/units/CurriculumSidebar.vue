@@ -50,6 +50,13 @@ const loadUnitsFor = async (chapterId) => {
   }
 }
 
+// "3 units": from the loaded list when we have it, else the count the API sent.
+const chapterUnitCount = (c) => {
+  const loaded = unitsByChapter.value[c.id]
+  if (Array.isArray(loaded)) return loaded.length
+  return c.stats?.unit_count ?? c.unit_count ?? null
+}
+
 const toggle = (chapterId) => {
   const next = new Set(expanded.value)
   if (next.has(chapterId)) {
@@ -282,19 +289,8 @@ defineExpose({
 </script>
 
 <template>
-  <aside class="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 lg:sticky lg:top-4">
-    <div class="px-2 py-2 flex items-center justify-between">
-      <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Curriculum</span>
-      <button
-        v-if="isTeacher"
-        type="button"
-        title="Add a new chapter"
-        class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
-        @click="openAddChapterModal"
-      >
-        + Add Chapter
-      </button>
-    </div>
+  <aside class="rounded-2xl border border-slate-200/80 dark:border-[#22304A] bg-white dark:bg-[#111A28] p-5 lg:sticky lg:top-4">
+    <p class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Curriculum</p>
 
     <p v-if="loading" class="px-3 py-2 text-xs text-slate-400 italic">Loading curriculum…</p>
     <p v-else-if="chapters.length === 0" class="px-3 py-2 text-xs text-slate-400 italic">No chapters yet.</p>
@@ -303,19 +299,17 @@ defineExpose({
       <li v-for="(c, ci) in chapters" :key="c.id">
         <button
           type="button"
-          class="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs font-bold transition"
-          :class="c.id === activeChapterId
-            ? 'text-slate-800 dark:text-slate-100'
-            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'"
+          class="w-full flex items-center gap-3 px-1 py-2.5 rounded-xl text-left transition hover:bg-slate-50 dark:hover:bg-[#172234]"
           @click="toggle(c.id)"
         >
           <span
-            class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] shrink-0"
-            :class="c.id === activeChapterId ? 'bg-[#006A3A] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'"
+            class="w-[26px] h-[26px] rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+            :class="c.id === activeChapterId ? 'bg-[#12804A] text-white' : 'bg-slate-100 dark:bg-[#1F2C42] text-slate-600 dark:text-slate-200'"
           >{{ ci + 1 }}</span>
-          <span class="flex-1 min-w-0 truncate">{{ c.title }}</span>
+          <span class="flex-1 min-w-0 truncate text-[15px] font-bold text-slate-900 dark:text-white">{{ c.title }}</span>
+          <span v-if="!expanded.has(c.id) && chapterUnitCount(c) !== null" class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ chapterUnitCount(c) }} unit{{ chapterUnitCount(c) === 1 ? '' : 's' }}</span>
           <svg
-            class="w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform"
+            class="w-4 h-4 shrink-0 text-slate-400 transition-transform"
             :class="expanded.has(c.id) ? 'rotate-90' : ''"
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
@@ -323,21 +317,30 @@ defineExpose({
           </svg>
         </button>
 
-        <ul v-if="expanded.has(c.id)" class="mt-0.5 ml-6 space-y-0.5 border-l border-slate-100 dark:border-slate-800 pl-2">
+        <ul v-if="expanded.has(c.id)" class="mt-0.5 mb-2 ml-3.5 space-y-1 border-l border-slate-200 dark:border-[#22304A] pl-3">
           <li v-if="unitsByChapter[c.id] === 'loading'" class="px-2 py-1.5 text-[11px] text-slate-400 italic">Loading…</li>
           <li v-else-if="unitsByChapter[c.id] === 'error'" class="px-2 py-1.5 text-[11px] text-red-500">Couldn't load units.</li>
           <li v-else-if="(unitsByChapter[c.id] || []).length === 0" class="px-2 py-1.5 text-[11px] text-slate-400 italic">No units yet.</li>
           <li v-for="(u, ui) in unitsByChapter[c.id]" :key="u.id" class="flex items-center gap-0.5 group">
             <button
               type="button"
-              class="flex-1 min-w-0 text-left px-2.5 py-1.5 rounded-lg text-[12px] leading-snug transition flex items-start gap-1.5"
+              class="flex-1 min-w-0 text-left px-3 py-2 rounded-xl transition"
               :class="u.id === activeUnitId && c.id === activeChapterId
-                ? 'bg-emerald-50 dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 font-semibold'
-                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60'"
+                ? 'bg-emerald-50 dark:bg-[#173A28]'
+                : 'hover:bg-slate-50 dark:hover:bg-[#172234]'"
               @click="pickUnit(c.id, u)"
             >
-              <span class="flex-1 min-w-0">{{ u.title }}</span>
-              <span v-if="u.locked" class="shrink-0" title="Locked">🔒</span>
+              <span class="flex items-center gap-1.5 text-sm font-semibold leading-snug" :class="u.id === activeUnitId && c.id === activeChapterId ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-200'">
+                <span class="min-w-0">{{ u.title }}</span>
+                <span v-if="u.locked" class="shrink-0" title="Locked">🔒</span>
+              </span>
+              <span
+                v-if="isTeacher && u.question_count !== undefined"
+                class="block text-xs mt-0.5"
+                :class="u.question_count === 0
+                  ? 'text-amber-600 dark:text-amber-300'
+                  : (u.id === activeUnitId && c.id === activeChapterId ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400')"
+              >{{ u.video_url ? 'Video' : 'No video' }} · {{ u.question_count === null ? '—' : u.question_count === 0 ? 'no quiz yet' : u.question_count + ' questions' }}</span>
             </button>
             <span v-if="isTeacher" class="shrink-0 flex flex-col opacity-0 group-hover:opacity-100 transition">
               <button
@@ -434,6 +437,13 @@ defineExpose({
         </ul>
       </li>
     </ul>
+
+    <button
+      v-if="isTeacher"
+      type="button"
+      class="mt-4 w-full min-h-[44px] rounded-xl border border-dashed border-emerald-600/60 text-emerald-700 dark:text-emerald-300 font-bold text-sm hover:bg-emerald-50 dark:hover:bg-emerald-400/10 transition cursor-pointer"
+      @click="openAddChapterModal"
+    >+ Add</button>
 
     <UploadLessonModal
       v-if="showAddChapterModal"

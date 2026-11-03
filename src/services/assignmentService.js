@@ -16,9 +16,28 @@ export const assignmentService = {
 
     // Teacher: push a reminder to every enrolled student who has not submitted.
     // Resolves { sent, pending }; the server answers 429 if one went out recently.
-    async remindStudents(id) {
-        const response = await api.post(`/assignments/${id}/remind`)
+    // `message` ({ title, body }) is optional: without it students get the
+    // standard reminder in their own language.
+    async remindStudents(id, message = null) {
+        const response = await api.post(`/assignments/${id}/remind`, message || {})
         return response.data?.data || { sent: 0, pending: 0 }
+    },
+
+    // Teacher: stop new submissions now (closed = true) or reopen (false).
+    async setClosed(id, closed) {
+        return this.updateAssignment(id, { closed })
+    },
+
+    // Teacher: delete an assignment with its questions and submissions.
+    async deleteAssignment(id) {
+        const response = await api.delete(`/assignments/${id}`)
+        return response.data
+    },
+
+    // Teacher: copy into `courseId` (default: same course) as a draft.
+    async duplicateAssignment(id, courseId) {
+        const response = await api.post(`/assignments/${id}/duplicate`, courseId ? { course_id: courseId } : {})
+        return response.data?.data?.assignment || null
     },
 
     // Teacher: create an assignment. { course_id, title, description?, due_date?, type?, status? }

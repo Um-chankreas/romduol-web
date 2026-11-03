@@ -20,6 +20,13 @@ export const quizService = {
         return response.data?.data?.quizzes || response.data?.quizzes || response.data
     },
 
+    // Teacher: how students did on a unit's practice quiz (practised, average,
+    // passes, hardest questions). `null` when the unit has no quiz yet.
+    async getUnitQuizStats(unitId) {
+        const response = await api.get(`/quizzes/unit/${unitId}/stats`)
+        return response.data?.data?.stats || null
+    },
+
     // Fetch full details for a single quiz. With no args, returns every
     // question (small quizzes, students taking it). Pass { page, limit } to
     // get one page of a teacher's question bank instead — see

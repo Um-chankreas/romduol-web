@@ -127,6 +127,13 @@
               :class="['flex-1 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition', !isFree ? accessOn : accessOff]"
             >💳 Paid</button>
           </div>
+          <label class="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-3 cursor-pointer">
+            <input type="checkbox" v-model="isPublished" :disabled="creating" class="mt-0.5 w-4 h-4 accent-emerald-600" />
+            <span class="text-sm">
+              <span class="block font-medium text-slate-800 dark:text-slate-200">Visible to students</span>
+              <span class="block text-xs text-slate-500 dark:text-slate-400">Turn off for a test class or one you're still building. Students won't see it in the app.</span>
+            </span>
+          </label>
         </section>
 
         <!-- ── Add chapters (create only) ────────────────────────── -->
@@ -248,6 +255,7 @@ const category = ref('')
 const icon = ref('📚')
 const color = ref('#006A3A')
 const isFree = ref(false)
+const isPublished = ref(true)
 const chapters = ref([''])
 const teacherId = ref('')
 
@@ -260,6 +268,7 @@ watch(
     icon.value = c?.icon || '📚'
     color.value = c?.color || '#006A3A'
     isFree.value = !!c?.is_free
+    isPublished.value = c?.is_published !== false
     teacherId.value = c?.teacher_id || c?.teacher?.id || ''
   },
   { immediate: true },
@@ -283,6 +292,7 @@ const submit = (openAfter) => {
     color: color.value,
     icon: icon.value,
     is_free: isFree.value,
+    is_published: isPublished.value,
     ...(props.showTeacherPicker ? { teacher_id: teacherId.value } : {}),
   }
   if (isEdit.value) {

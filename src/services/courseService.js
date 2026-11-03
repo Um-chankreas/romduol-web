@@ -2,7 +2,7 @@ import api from './axios'
 
 export const courseService = {
     // Create course
-    async createCourse(title, description, category, color, icon, cover_image, is_free = false, teacher_id = undefined) {
+    async createCourse(title, description, category, color, icon, cover_image, is_free = false, teacher_id = undefined, is_published = true) {
         const response = await api.post('/courses', {
             title,
             description,
@@ -11,6 +11,7 @@ export const courseService = {
             icon,
             cover_image,
             is_free,
+            is_published,
             ...(teacher_id ? { teacher_id } : {})
         })
         return response.data
@@ -38,6 +39,18 @@ export const courseService = {
     // Teacher (own course) or admin/super_admin.
     async getCourseRoster(id) {
         const response = await api.get(`/courses/${id}/roster`)
+        return response.data
+    },
+
+    // Students not yet in this class, matched by name / email / phone.
+    async searchStudentCandidates(id, q) {
+        const response = await api.get(`/courses/${id}/student-candidates`, { params: { q } })
+        return response.data.data.students
+    },
+
+    // Add students to the class: ids = [studentId, ...]
+    async addStudents(id, ids) {
+        const response = await api.post(`/courses/${id}/students`, { student_ids: ids })
         return response.data
     },
 

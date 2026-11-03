@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { agoraUsageService } from '@/services/agoraUsageService'
+import { liveClassService } from '@/services/liveClassService'
 import { authService } from '@/services/authService'
 import { useLanguage } from '@/composables/useLanguage'
 
@@ -74,7 +75,33 @@ const load = async () => {
     if (seq === loadSeq) loading.value = false
   }
 }
-const refreshAll = () => Promise.all([loadAccounts(), load()])
+// ---- classes marked live ----
+// A class whose teacher closed the tab can stay "live" in the database and
+// block a new start; here an admin can see those and end them.
+const liveNow = ref([])
+const endingId = ref('')
+const loadLiveNow = async () => {
+  try { liveNow.value = await liveClassService.getActiveLiveClasses() } catch { /* panel is optional */ }
+}
+const endLive = async (c) => {
+  if (!window.confirm(t('End this live class for everyone?'))) return
+  endingId.value = c.id
+  try {
+    await liveClassService.endLiveClass(c.id)
+    liveNow.value = liveNow.value.filter((x) => x.id !== c.id)
+    load()
+  } catch (e) {
+    error.value = errMsg(e, 'Could not end the class.')
+  } finally {
+    endingId.value = ''
+  }
+}
+const sinceText = (iso) => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`
+}
+
+const refreshAll = () => Promise.all([loadAccounts(), load(), loadLiveNow()])
 onMounted(() => { refreshAll(); document.addEventListener('click', closeMenu); window.addEventListener('resize', closeMenuNow) })
 onBeforeUnmount(() => { document.removeEventListener('click', closeMenu); window.removeEventListener('resize', closeMenuNow) })
 onActivated(() => { if (data.value) refreshAll() })
@@ -377,6 +404,32 @@ const fmtDate = (iso) => (iso ? new Date(iso.endsWith('Z') ? iso : `${iso}Z`).to
                 <AlertCircle class="w-4 h-4 shrink-0" /> {{ t('At this pace you will pass the free minutes before the month ends.') }}
               </p>
             </template>
+          </section>
+
+          <!-- Classes marked live -->
+          <section v-if="liveNow.length" class="rounded-2xl bg-white dark:bg-slate-900 border border-red-200/80 dark:border-red-900/50 p-5 sm:p-6">
+            <h2 class="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              {{ t('Live now') }} ({{ liveNow.length }})
+            </h2>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {{ t('If a class shows 0 connected, it probably ended without being closed. End it so a new one can start.') }}
+            </p>
+            <ul class="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+              <li v-for="c in liveNow" :key="c.id" class="py-3 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-slate-900 dark:text-white truncate">{{ c.title }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {{ c.course || '—' }} · {{ c.teacher || '—' }} · {{ t('live for') }} {{ c.started_at ? sinceText(c.started_at) : '—' }} ·
+                    <span :class="c.connected ? '' : 'text-amber-600 dark:text-amber-400 font-medium'">{{ c.connected }} {{ t('connected') }}</span>
+                  </p>
+                </div>
+                <button type="button" :disabled="endingId === c.id" @click="endLive(c)"
+                  class="shrink-0 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-xs font-semibold px-3 py-1.5">
+                  {{ endingId === c.id ? t('Ending…') : t('End class') }}
+                </button>
+              </li>
+            </ul>
           </section>
 
           <!-- Stat cards -->

@@ -228,12 +228,12 @@ const closeCreateModal = () => {
   showCreateModal.value = false;
 };
 
-const handleCreateCourse = async ({ title, description, category, color, icon, is_free, teacher_id, chapters = [], openAfter = false }) => {
+const handleCreateCourse = async ({ title, description, category, color, icon, is_free, is_published, teacher_id, chapters = [], openAfter = false }) => {
   try {
     creatingCourse.value = true;
     createError.value = '';
 
-    const response = await courseService.createCourse(title, description, category, color, icon, null, is_free, teacher_id);
+    const response = await courseService.createCourse(title, description, category, color, icon, null, is_free, teacher_id, is_published);
     const newCourse = response.data?.course || response.course || response.data || response;
 
     // Create any chapters the teacher typed, in order.

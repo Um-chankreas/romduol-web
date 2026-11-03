@@ -1,19 +1,20 @@
 <script setup>
-import { ref, computed, onActivated, onMounted } from 'vue'
+import { ref, computed, onActivated, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import UploadLessonModal from '@/components/modals/UploadLessonModal.vue'
 import EditLessonModal from '@/components/modals/EditLessonModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
+import AddStudentsModal from '@/components/modals/AddStudentsModal.vue'
 import Header from '@/components/layout/Header.vue'
 import Footer from '@/components/layout/Footer.vue'
 import Breadcrumb from '@/components/layout/Breadcrumb.vue'
-import QuizListView from '@/views/course/QuizListView.vue'
-import AssignmentRosterView from '@/components/modals/AssignmentRosterView.vue'
+import AssignmentsPanel from '@/components/assignments/AssignmentsPanel.vue'
 import ClassScheduleCard from '@/components/classes/ClassScheduleCard.vue'
 import CourseStudentsProgress from '@/components/insights/CourseStudentsProgress.vue'
 import BrandIcon from '@/components/ui/BrandIcon.vue'
 import { useTheme } from '@/composables/useTheme.js'
+import { formatDate, formatDateTime } from '@/utils/dateFormat'
 import { authService } from '@/services/authService'
 
 // Students read the course; authoring controls are for teachers/admins.
@@ -49,7 +50,7 @@ const allQuizzes = computed(() =>
 const loading = ref(true)
 const error = ref(null)
 // ?tab=students (from the dashboard overview) opens straight on that tab.
-const TAB_IDS = ['lessons', 'quizzes', 'assignments', 'students', 'schedule']
+const TAB_IDS = ['lessons', 'assignments', 'students', 'schedule']
 const activeTab = ref(TAB_IDS.includes(route.query.tab) ? route.query.tab : 'lessons')
 
 // Upload Modal States
@@ -106,7 +107,6 @@ const themeColors = [
 
 const tabs = computed(() => [
   { id: 'lessons', name: 'Lessons', icon: 'lesson', tint: 'bg-emerald-50 dark:bg-slate-800', count: lessons.value.length },
-  { id: 'quizzes', name: 'Quizzes', icon: 'quiz', tint: 'bg-emerald-50 dark:bg-slate-800', count: allQuizzes.value.length },
   { id: 'assignments', name: 'Assignments', icon: 'assignment', tint: 'bg-emerald-50 dark:bg-slate-800', count: assignments.value.length },
   { id: 'students', name: 'Students', icon: 'class', tint: 'bg-emerald-50 dark:bg-slate-800', count: rosterCount.value },
   { id: 'schedule', name: 'Schedule', icon: 'study-time', tint: 'bg-emerald-50 dark:bg-slate-800' }
@@ -117,17 +117,19 @@ const tabs = computed(() => [
 // AssignmentEditorView.vue — not in a dialog here.
 const assignments = ref([])
 
-// View-submissions roster stays a dialog; it's a read/grade surface, not
-// part of the authoring flow that got merged into the editor page.
-const rosterAssignmentId = ref(null)
-const openRoster = (assignmentId) => { rosterAssignmentId.value = assignmentId }
-const closeRoster = () => { rosterAssignmentId.value = null }
+// Results (who submitted, scores, per-question breakdown) are a full page.
+const assignmentsLoading = ref(true)
+const openResults = (assignmentId) => {
+  router.push({ name: 'AssignmentResults', params: { courseId: route.params.id, id: assignmentId }, query: { courseTitle: course.value?.title } })
+}
 
 const fetchAssignments = async () => {
   try {
     assignments.value = await assignmentService.getCourseAssignments(route.params.id)
   } catch {
     /* non-fatal — the tab just shows empty */
+  } finally {
+    assignmentsLoading.value = false
   }
 }
 
@@ -142,12 +144,7 @@ const goToEditAssignment = (assignmentId) => {
   router.push({ name: 'EditAssignment', params: { courseId: route.params.id, id: assignmentId }, query: { courseTitle: course.value?.title } })
 }
 
-const formatDue = (iso) => {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
+const formatDue = (iso) => formatDateTime(iso) || null
 const isOverdue = (iso) => iso && new Date(iso) < new Date()
 
 // ── Students roster ───────────────────────────────────────────────────────
@@ -158,6 +155,12 @@ const rosterLoading = ref(false)
 const rosterError = ref(null)
 // undefined until the roster has loaded, so the tab badge stays hidden.
 const rosterCount = computed(() => roster.value?.students?.length)
+
+const showAddStudents = ref(false)
+const onStudentsAdded = () => {
+  showAddStudents.value = false
+  fetchRoster({ silent: true })
+}
 
 const fetchRoster = async ({ silent = false } = {}) => {
   if (!['teacher', 'admin', 'super_admin'].includes(authService.getCurrentUser()?.role)) return
@@ -234,10 +237,6 @@ const isDirty = computed(() => {
     || formIsFree.value !== !!course.value.is_free
 })
 
-const formatDate = (date) => {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 const goBack = () => {
   if (window.history.length > 1) {
@@ -271,6 +270,46 @@ const handleDeleteCourse = async () => {
   } finally {
     deletingCourse.value = false
   }
+}
+
+// ── Class header & lesson list helpers ──────────────────────────────────
+const courseMenuOpen = ref(false)
+const lessonMenuId = ref(null)
+const closeMenus = () => { courseMenuOpen.value = false; lessonMenuId.value = null }
+onMounted(() => document.addEventListener('click', closeMenus))
+onBeforeUnmount(() => document.removeEventListener('click', closeMenus))
+
+const editingDescription = ref(false)
+const descriptionDraft = ref('')
+const savingDescription = ref(false)
+const startDescription = () => { descriptionDraft.value = course.value?.description || ''; editingDescription.value = true }
+const saveDescription = async () => {
+  savingDescription.value = true
+  try {
+    await courseService.updateCourse(route.params.id, { description: descriptionDraft.value.trim() })
+    course.value = { ...course.value, description: descriptionDraft.value.trim() }
+    editingDescription.value = false
+  } catch (err) {
+    error.value = err.response?.data?.error || err.message || 'Failed to save the description.'
+  } finally {
+    savingDescription.value = false
+  }
+}
+
+const addQuizTo = (lesson) => {
+  router.push({ name: 'CreateQuiz', params: { courseId: route.params.id }, query: { lessonId: lesson.id } })
+}
+// "4 units · 1 video · 1 h 12 min · updated 10/09"
+const lessonMeta = (lesson) => {
+  const parts = []
+  const units = lesson.stats?.unit_count
+  if (units !== undefined) parts.push(`${units} unit${units === 1 ? '' : 's'}`)
+  if (lesson.has_video) parts.push('video')
+  const sec = Number(lesson.duration_seconds) || 0
+  if (sec > 0) parts.push(sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.max(1, Math.round(sec / 60))} min`)
+  const updated = formatDate(lesson.updated_at || lesson.created_at)
+  if (updated) parts.push(`updated ${updated.slice(0, 5)}`)
+  return parts.join(' · ')
 }
 
 // Video Handlers
@@ -518,18 +557,6 @@ onMounted(() => {
       <main class="flex-1 p-6 sm:p-8 flex flex-col gap-6">
         <div class="w-full max-w-7xl mx-auto flex flex-col gap-6">
           <!-- BACK BUTTON -->
-          <div class="flex items-center">
-            <button 
-              @click="goBack" 
-              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 text-xs font-bold border border-slate-200/80 dark:border-slate-800 shadow-xs transition active:scale-95 cursor-pointer group"
-            >
-              <svg class="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
-              </svg>
-              <span>Back to Classes</span>
-            </button>
-          </div>
-
           <!-- LOADING STATE -->
           <div v-if="loading" class="text-center py-20 text-slate-600 dark:text-slate-400 font-medium">
             Loading course details...
@@ -541,139 +568,89 @@ onMounted(() => {
           </div>
 
           <template v-else-if="course">
-            <!-- TOP BANNER -->
-            <div
-              class="relative w-full rounded-3xl p-6 sm:p-8 shadow-md overflow-hidden text-white transition-all bg-cover bg-center shrink-0"
-              :style="{
-                backgroundColor: course.color || '#006A3A',
-                backgroundImage: course.cover_image ? `url(${course.cover_image})` : 'none'
-              }"
-            >
-              <div class="relative z-10 flex justify-between items-start gap-4">
-                <div class="space-y-3 max-w-2xl min-w-0">
-                  <!-- Tags & Code -->
-                  <div class="flex items-center flex-wrap gap-2.5">
-                    <span class="px-2.5 py-1 rounded-lg bg-white/15 text-white text-[11px] font-bold uppercase tracking-wide border border-white/20 backdrop-blur-sm">
-                      {{ course.category || course.code || 'COURSE' }}
+            <!-- CLASS HEADER -->
+            <header class="flex flex-wrap items-start justify-between gap-4">
+              <div class="flex items-start gap-5 min-w-0">
+                <div
+                  class="w-[60px] h-[60px] shrink-0 rounded-2xl flex items-center justify-center shadow-[0_4px_0_rgba(0,0,0,0.25)]"
+                  :style="{ backgroundColor: course.color || '#12804A' }"
+                >
+                  <BrandIcon name="lesson" set="line-dark" :size="34" />
+                </div>
+                <div class="min-w-0 space-y-2">
+                  <h1 class="text-3xl font-extrabold tracking-tight leading-tight text-slate-900 dark:text-white">{{ course.title }}</h1>
+                  <div class="flex items-center flex-wrap gap-x-3 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
+                    <span class="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 text-[11px] font-bold uppercase tracking-wide">
+                      {{ course.category || 'Class' }}
                     </span>
-                    <span
-                      :class="[
-                        'px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide shadow-sm',
-                        course.is_free ? 'bg-amber-400 text-amber-950' : 'bg-white/90 text-slate-800'
-                      ]"
-                    >
-                      <span class="inline-flex items-center gap-1"><BrandIcon v-if="course.is_free" name="gift" set="line-light" :size="14" />{{ course.is_free ? 'Free' : 'Paid' }}</span>
+                    <span :class="['px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide', course.is_free ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-400/15 dark:text-slate-300']">
+                      {{ course.is_free ? 'Free' : 'Paid' }}
                     </span>
-                    <span v-if="rosterCount !== undefined" class="flex items-center gap-1.5 text-xs font-medium text-white/85">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                      </svg>
-                      {{ rosterCount }} Student{{ rosterCount === 1 ? '' : 's' }} Enrolled
-                    </span>
+                    <span v-if="rosterCount !== undefined">{{ rosterCount }} student{{ rosterCount === 1 ? '' : 's' }}</span>
+                    <span v-if="canManage && course.code">Join code <strong class="text-slate-900 dark:text-white tracking-wide">{{ course.code }}</strong></span>
+                    <button
+                      v-if="canManage && !course.description && !editingDescription"
+                      type="button"
+                      class="px-3 py-1 rounded-xl border border-dashed border-slate-300 dark:border-[#3A4A66] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                      @click="startDescription"
+                    >+ Add description</button>
                   </div>
-
-                  <!-- Title & Description -->
-                  <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight text-white">
-                    {{ course.title }}
-                  </h1>
-                  <p class="text-sm text-white/85 leading-relaxed max-w-xl">
-                    {{ course.description || 'No description provided for this course.' }}
+                  <p v-if="course.description && !editingDescription" class="text-sm text-slate-600 dark:text-slate-300 max-w-2xl">
+                    {{ course.description }}
+                    <button v-if="canManage" type="button" class="ml-2 text-xs font-bold text-emerald-600 dark:text-emerald-300 hover:underline cursor-pointer" @click="startDescription">Edit</button>
                   </p>
-                </div>
-
-                <!-- Actions -->
-                <div v-if="canManage" class="flex items-center gap-2 shrink-0">
-                  <button
-                    @click="openCustomizeModal"
-                    title="Customize"
-                    aria-label="Customize class"
-                    class="w-9 h-9 grid place-items-center rounded-xl bg-white/15 hover:bg-white/25 text-white backdrop-blur-sm border border-white/20 transition cursor-pointer active:scale-95"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-
-                  <!-- Delete Class Button -->
-                  <button
-                    @click="openDeleteModal"
-                    class="w-9 h-9 grid place-items-center rounded-xl bg-white/15 hover:bg-red-600/80 text-white backdrop-blur-sm border border-white/20 transition cursor-pointer active:scale-95"
-                    aria-label="Delete class"
-                    title="Delete class"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  <div v-if="editingDescription" class="flex flex-col gap-2 max-w-xl">
+                    <textarea v-model="descriptionDraft" rows="3" class="px-3.5 py-2.5 rounded-xl text-sm bg-transparent border border-slate-300 dark:border-[#2E3D58]" placeholder="What is this class about?"></textarea>
+                    <div class="flex gap-2">
+                      <button type="button" class="px-4 py-1.5 rounded-xl bg-[#12804A] text-white text-xs font-bold cursor-pointer disabled:opacity-50" :disabled="savingDescription" @click="saveDescription">{{ savingDescription ? 'Saving…' : 'Save' }}</button>
+                      <button type="button" class="px-4 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer" @click="editingDescription = false">Cancel</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <!-- Only dim for legibility when there's a photo behind the text. -->
-              <div v-if="course.cover_image" class="absolute inset-0 bg-black/25 z-0 pointer-events-none"></div>
-            </div>
+              <div v-if="canManage" class="relative">
+                <button
+                  type="button"
+                  aria-label="More class actions"
+                  class="w-11 h-11 rounded-xl border border-slate-200 dark:border-[#22304A] bg-white dark:bg-[#172234] text-slate-600 dark:text-slate-200 text-lg leading-none hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                  @click.stop="courseMenuOpen = !courseMenuOpen"
+                >⋮</button>
+                <div v-if="courseMenuOpen" class="absolute right-0 top-12 z-20 w-52 rounded-xl py-1 bg-white dark:bg-[#172234] border border-slate-200 dark:border-[#2E3D58] shadow-xl text-sm font-semibold">
+                  <button class="row-menu-item" @click="courseMenuOpen = false; openCustomizeModal()">Customize class</button>
+                  <button class="row-menu-item row-menu-danger" @click="courseMenuOpen = false; openDeleteModal()">Delete class…</button>
+                </div>
+              </div>
+            </header>
 
-            <!-- CURRICULUM & TASKS HEADER -->
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-center gap-2.5">
-                <h2 class="text-lg font-extrabold text-slate-900 dark:text-white">Curriculum &amp; Tasks</h2>
-                <span class="px-2.5 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold">
-                  Active Term
-                </span>
-              </div>
-              <div v-if="canManage" class="flex items-center gap-2.5">
-                <button
-                  @click="openUploadModal"
-                  class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer active:scale-95"
-                >
-                  <span class="text-sm font-normal leading-none">+</span> Upload Lesson
-                </button>
-                <button
-                  @click="goToCreateAssignment"
-                  class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#006A3A] hover:bg-[#005A31] text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
-                >
-                  <span class="text-sm font-normal leading-none">+</span> Create Assignment
-                </button>
-              </div>
+            <!-- TABS -->
+            <div role="tablist" aria-label="Class sections" class="flex flex-wrap gap-1 border-b border-slate-200 dark:border-[#1C2840]">
+              <button
+                v-for="tab in tabs"
+                :key="tab.id"
+                type="button"
+                role="tab"
+                :aria-selected="activeTab === tab.id"
+                @click="activeTab = tab.id"
+                :class="[
+                  'min-h-[44px] px-4 border-b-2 text-sm whitespace-nowrap transition cursor-pointer -mb-px',
+                  activeTab === tab.id
+                    ? 'border-emerald-500 text-slate-900 dark:text-white font-bold'
+                    : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-semibold'
+                ]"
+              >
+                {{ tab.name }}
+                <span
+                  v-if="tab.count !== undefined"
+                  :class="['ml-1', activeTab === tab.id ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400']"
+                >{{ tab.count }}</span>
+              </button>
             </div>
 
             <!-- MAIN CONTENT LAYOUT -->
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start pb-12">
-              <!-- TAB SIDEBAR CARD -->
-              <div class="lg:col-span-1 bg-[#ffffff] dark:bg-slate-900/50 rounded-2xl p-3 border border-slate-200/80 dark:border-slate-800 space-y-1.5 shadow-xs">
-                <button
-                  v-for="tab in tabs"
-                  :key="tab.id"
-                  @click="activeTab = tab.id"
-                  :class="[
-                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer',
-                    activeTab === tab.id
-                      ? 'bg-[#006A3A] text-white shadow-sm'
-                      : 'text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  ]"
-                >
-                  <div class="flex items-center gap-2.5">
-                    <span
-                      :class="[
-                        'w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0',
-                        activeTab === tab.id ? 'bg-white/15' : tab.tint
-                      ]"
-                    ><BrandIcon :name="tab.icon" :set="activeTab === tab.id ? 'line-dark' : lightSet" :size="22" /></span>
-                    <span>{{ tab.name }}</span>
-                  </div>
-                  <span
-                    v-if="tab.count !== undefined"
-                    :class="[
-                      'px-2 py-0.5 rounded-md text-[10px] font-semibold',
-                      activeTab === tab.id ? 'bg-emerald-800 text-emerald-100' : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
-                    ]"
-                  >
-                    {{ tab.count }}
-                  </span>
-                </button>
-              </div>
-
+            <div class="pb-12">
               <!-- TAB CONTENT -->
-              <div class="lg:col-span-3 space-y-6 min-w-0">
+              <div class="space-y-6 min-w-0">
                 <!-- LESSONS TAB -->
                 <div v-if="activeTab === 'lessons'">
                   <div v-if="lessons.length === 0" class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-[#ffffff] dark:bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center shadow-xs">
@@ -695,111 +672,67 @@ onMounted(() => {
                     </button>
                   </div>
 
-                  <!-- LESSON CARDS -->
+                  <!-- LESSON LIST -->
                   <div v-else class="space-y-4">
-                    <div
-                      v-for="lesson in lessons"
-                      :key="lesson.id"
-                      class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition hover:shadow-md text-left"
-                    >
-                      <!-- Header -->
-                      <div class="flex items-start justify-between mb-3">
-                        <div class="flex items-center gap-3">
-                          <div class="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
-                            <img
-                              v-if="course?.teacher?.avatar_url"
-                              :src="course?.teacher?.avatar_url"
-                              alt="Author"
-                              class="w-full h-full object-cover"
-                            />
-                            <span v-else>{{ (course?.teacher?.name || 'U').charAt(0).toUpperCase() }}</span>
-                          </div>
-                          <div class="text-left">
-                            <h4 class="text-sm font-bold text-slate-900 dark:text-white leading-tight">
-                              {{ course?.teacher?.name || 'Teacher' }}
-                            </h4>
-                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              {{ formatDate(lesson.created_at) }}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div v-if="canManage" class="flex items-center gap-1">
-                          <button
-                            @click="openEditLessonModal(lesson)"
-                            class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition cursor-pointer"
-                            title="Edit"
-                          >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                          <button
-                            @click="openDeleteLessonModal(lesson)"
-                            class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-red-600 transition cursor-pointer"
-                            title="Delete"
-                          >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      <p class="text-sm text-slate-800 dark:text-slate-200 mb-3 font-normal text-left">
-                        {{ lesson.title }}
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <p class="text-sm text-slate-500 dark:text-slate-400">
+                        {{ lessons.length }} lesson{{ lessons.length === 1 ? '' : 's' }} · shown to students in this order
                       </p>
-
-                      <!-- CHAPTER CONTENT (text units — Markdown / LaTeX) -->
-                      <router-link
-                        :to="{ name: 'Lesson', params: { lessonId: lesson.id } }"
-                        class="inline-flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 hover:bg-emerald-100 text-[#006A3A] dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 text-xs font-bold transition active:scale-95"
+                      <button
+                        v-if="canManage"
+                        @click="openUploadModal"
+                        class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#12804A] hover:bg-[#0f7a45] text-white font-bold text-sm transition cursor-pointer shadow-[0_3px_0_#0A5C34]"
                       >
-                        <BrandIcon name="lesson" :set="lightSet" :size="16" /> Open chapter &amp; units
-                      </router-link>
+                        <span class="text-base font-normal leading-none">+</span> Upload lesson
+                      </button>
+                    </div>
 
-                      <!-- ATTACHED MATERIALS & QUIZ SECTION -->
-                      <div class="flex flex-wrap items-center gap-3">
-                        <!-- Video Preview Card -->
-                        <div
-                          v-if="lesson.video_url"
-                          class="flex items-start max-w-md w-full border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition group"
-                          @click="watchVideo(lesson)"
-                        >
-                          <div class="flex-1 p-4 bg-white dark:bg-slate-900 min-w-0 text-left">
-                            <h5 class="text-sm font-semibold text-slate-900 dark:text-white underline decoration-slate-400 group-hover:decoration-emerald-600 truncate">
-                              {{ lesson.title }} — Video
-                            </h5>
-                            <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase mt-1 flex items-center gap-1">
-                              <svg class="w-3 h-3 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M8 5v14l11-7z" />
-                              </svg>
-                              Click to Watch
-                              <template v-if="lesson.duration_seconds">
-                                · {{ Math.floor(lesson.duration_seconds / 60) }}:{{ String(lesson.duration_seconds % 60).padStart(2, '0') }}
-                              </template>
-                            </span>
+                    <div class="rounded-2xl border border-slate-200/80 dark:border-[#22304A] bg-white dark:bg-[#111A28] divide-y divide-slate-100 dark:divide-[#1C2840]">
+                      <div
+                        v-for="(lesson, i) in lessons"
+                        :key="lesson.id"
+                        class="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 text-left"
+                      >
+                        <div class="flex items-center gap-4 flex-[999_1_340px] min-w-0">
+                          <span class="w-10 h-10 shrink-0 rounded-full border-2 border-emerald-500 text-emerald-600 dark:text-emerald-300 font-bold flex items-center justify-center">{{ i + 1 }}</span>
+                          <div class="min-w-0 space-y-1">
+                            <div class="flex items-center flex-wrap gap-2.5">
+                              <h4 class="text-lg font-bold text-slate-900 dark:text-white leading-snug">{{ lesson.title }}</h4>
+                              <span v-if="lesson.completed" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300">Done</span>
+                              <span v-else-if="canManage" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300">Published</span>
+                            </div>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">{{ lessonMeta(lesson) }}</p>
+                          </div>
+                        </div>
+
+                        <div v-if="canManage && lesson.stats" class="w-44 shrink-0">
+                          <p class="text-xs text-slate-500 dark:text-slate-400"><strong class="text-slate-900 dark:text-white">{{ lesson.stats.finished_percent }}%</strong> of students finished</p>
+                          <div class="mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-[#1F2C42] overflow-hidden">
+                            <div class="h-full rounded-full bg-emerald-500" :style="{ width: lesson.stats.finished_percent + '%' }"></div>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 shrink-0">
+                          <router-link
+                            :to="{ name: 'Lesson', params: { lessonId: lesson.id } }"
+                            class="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-[#2E3D58] text-sm font-bold text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                          >Open units</router-link>
+                          <div v-if="canManage" class="relative">
                             <button
                               type="button"
-                              class="mt-2 text-xs text-red-600 hover:underline disabled:opacity-50"
-                              :disabled="removingVideoId === lesson.id"
-                              @click.stop="removeLessonVideo(lesson)"
-                            >
-                              {{ removingVideoId === lesson.id ? 'Removing…' : 'Remove video' }}
-                            </button>
+                              aria-label="More lesson actions"
+                              class="w-11 h-11 rounded-xl border border-slate-200 dark:border-[#22304A] bg-white dark:bg-[#172234] text-slate-600 dark:text-slate-200 text-lg leading-none hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                              @click.stop="lessonMenuId = lessonMenuId === lesson.id ? null : lesson.id"
+                            >⋮</button>
+                            <div v-if="lessonMenuId === lesson.id" class="absolute right-0 top-12 z-20 w-52 rounded-xl py-1 bg-white dark:bg-[#172234] border border-slate-200 dark:border-[#2E3D58] shadow-xl text-sm font-semibold">
+                              <button class="row-menu-item" @click="lessonMenuId = null; openEditLessonModal(lesson)">Edit lesson</button>
+                              <button class="row-menu-item" @click="lessonMenuId = null; addQuizTo(lesson)">Add quiz</button>
+                              <button v-if="lesson.video_url" class="row-menu-item" @click="lessonMenuId = null; watchVideo(lesson)">Watch video</button>
+                              <button v-if="lesson.video_url" class="row-menu-item" @click="lessonMenuId = null; removeLessonVideo(lesson)">Remove video</button>
+                              <div class="my-1 border-t border-slate-100 dark:border-[#2E3D58]"></div>
+                              <button class="row-menu-item row-menu-danger" @click="lessonMenuId = null; openDeleteLessonModal(lesson)">Delete…</button>
+                            </div>
                           </div>
-                          <div class="w-32 h-20 bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
-                            <span class="text-2xl">🎬</span>
-                          </div>
-                        </div>
-
-                        <!-- QUIZ ACTION/STATUS INSIDE LESSON CARD -->
-                        <div class="w-full pt-4 mt-2 border-t border-slate-100 dark:border-slate-800/60">
-                          <QuizListView
-                            :course-id="route.params.id"
-                            :lesson-id="lesson.id"
-                            :initial-quizzes="lesson.quizzes || []"
-                          />
                         </div>
                       </div>
                     </div>
@@ -841,92 +774,37 @@ onMounted(() => {
                 </div>
 
                 <!-- ASSIGNMENTS TAB -->
-                <div v-else-if="activeTab === 'assignments'" class="space-y-3">
-                  <div
-                    v-if="assignments.length === 0"
-                    class="w-full border-2 border-dashed border-slate-200/80 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900/30 p-8 text-center shadow-xs"
-                  >
-                    <div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-slate-800 text-[#006A3A] dark:text-emerald-400 flex items-center justify-center text-xl mb-3 mx-auto"><BrandIcon name="assignment" :set="lightSet" :size="28" /></div>
-                    <h3 class="text-base font-bold text-slate-900 dark:text-white">No assignments yet</h3>
-                    <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Create one for students to submit work.</p>
-                  </div>
-
-                  <div
-                    v-for="a in assignments"
-                    :key="a.id"
-                    class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs hover:shadow-md transition text-left"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="flex items-center gap-2 flex-wrap min-w-0">
-                        <h4 class="text-sm font-bold text-slate-900 dark:text-white truncate">{{ a.title }}</h4>
-                        <span
-                          :class="[
-                            'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase',
-                            a.type === 'quiz'
-                              ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
-                              : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
-                          ]"
-                        >
-                          {{ a.type === 'quiz' ? 'Quiz' : 'Homework' }}
-                        </span>
-                      </div>
-                      <span
-                        v-if="formatDue(a.due_date)"
-                        :class="[
-                          'shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold',
-                          isOverdue(a.due_date)
-                            ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400'
-                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-                        ]"
-                      >
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
-                        {{ isOverdue(a.due_date) ? 'Was due' : 'Due' }} {{ formatDue(a.due_date) }}
-                      </span>
-                      <span v-else class="shrink-0 text-[11px] font-medium text-slate-400">No due date</span>
-                    </div>
-
-                    <p v-if="a.description" class="mt-1.5 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{{ a.description }}</p>
-
-                    <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <span class="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        <span
-                          class="w-2 h-2 rounded-full shrink-0"
-                          :class="a.status === 'published' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"
-                        ></span>
-                        {{ a.status === 'published' ? 'Published' : 'Draft' }}
-                      </span>
-                      <div class="flex items-center gap-3 text-xs font-bold">
-                        <button
-                          v-if="canManage"
-                          type="button"
-                          class="text-[#006A3A] dark:text-emerald-400 hover:underline"
-                          @click="goToEditAssignment(a.id)"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          v-if="canManage && a.type === 'quiz'"
-                          type="button"
-                          class="text-[#006A3A] dark:text-emerald-400 hover:underline"
-                          @click="openRoster(a.id)"
-                        >
-                          View submissions
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <AssignmentsPanel
+                  v-else-if="activeTab === 'assignments'"
+                  :assignments="assignments"
+                  :loading="assignmentsLoading"
+                  :course-id="String(route.params.id)"
+                  :can-manage="canManage"
+                  @create="goToCreateAssignment"
+                  @edit="goToEditAssignment"
+                  @results="openResults"
+                  @changed="fetchAssignments"
+                />
 
                 <!-- STUDENTS TAB -->
-                <CourseStudentsProgress
-                  v-else-if="activeTab === 'students'"
-                  :data="roster"
-                  :loading="rosterLoading"
-                  :error="rosterError"
-                  @retry="fetchRoster()"
-                />
+                <div v-else-if="activeTab === 'students'" class="space-y-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm text-slate-500 dark:text-slate-400">
+                      Only students in this class get its live-class notifications.
+                    </p>
+                    <button
+                      type="button"
+                      @click="showAddStudents = true"
+                      class="shrink-0 px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition cursor-pointer"
+                    >+ Add students</button>
+                  </div>
+                  <CourseStudentsProgress
+                    :data="roster"
+                    :loading="rosterLoading"
+                    :error="rosterError"
+                    @retry="fetchRoster()"
+                  />
+                </div>
 
                 <!-- SCHEDULE TAB -->
                 <ClassScheduleCard
@@ -949,12 +827,6 @@ onMounted(() => {
         @close="closeUploadModal"
         @upload="handleUpload"
       />
-      <!-- ASSIGNMENT SUBMISSIONS / SCORES ROSTER (quiz-type only) -->
-      <AssignmentRosterView
-        v-if="rosterAssignmentId"
-        :assignment-id="rosterAssignmentId"
-        @close="closeRoster"
-      />
       <!-- EDIT LESSON MODAL -->
       <EditLessonModal
         v-if="showEditLessonModal"
@@ -966,6 +838,13 @@ onMounted(() => {
         @save="handleEditLesson"
       />
       <!-- DELETE LESSON MODAL -->
+      <AddStudentsModal
+        v-if="showAddStudents"
+        :course-id="route.params.id"
+        @close="showAddStudents = false"
+        @added="onStudentsAdded"
+      />
+
       <ConfirmModal
         v-if="showDeleteLessonModal"
         title="Delete this lesson?"
@@ -1115,3 +994,12 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.row-menu-item { display: block; width: 100%; text-align: left; padding: 0.55rem 0.9rem; cursor: pointer; color: rgb(51 65 85); }
+.row-menu-item:hover { background: rgb(241 245 249); }
+.row-menu-danger { color: rgb(185 28 28); }
+:global(.dark) .row-menu-item { color: rgb(226 232 240); }
+:global(.dark) .row-menu-item:hover { background: rgb(30 41 59); }
+:global(.dark) .row-menu-danger { color: #FCA5A5; }
+</style>

@@ -49,6 +49,12 @@ export const liveClassService = {
         return response.data
     },
 
+    // Classes currently marked live (admin / super admin)
+    async getActiveLiveClasses() {
+        const response = await api.get('/live-classes/active')
+        return response.data.data.classes
+    },
+
     // End live class
     async endLiveClass(id) {
         const response = await api.put(`/live-classes/${id}/end`)
